@@ -1,0 +1,72 @@
+load("//bazel:mosac.bzl", "mosac_cc_library" , "mosac_cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+mosac_cc_library(
+    name = "fake_cr",
+    srcs = [
+        "fake_cr.cc",
+    ],
+    hdrs = [
+        "fake_cr.h",
+    ],
+    deps = [
+        ":cr",
+        "//mosac/context",
+        "//mosac/context:state",
+        "//mosac/ss:ss_type",
+        "//mosac/utils:field",
+        "//mosac/utils:vec_op",
+    ],
+)
+
+mosac_cc_library(
+    name = "true_cr",
+    srcs = [
+        "true_cr.cc",
+    ],
+    hdrs = [
+        "true_cr.h",
+    ],
+    deps = [
+        ":cr",
+        "//mosac/context",
+        "//mosac/context:state",
+        "//mosac/ss:ss_type",
+        "//mosac/utils:field",
+        "//mosac/utils:vec_op",
+        "//mosac/cr/utils:ot_adapter",
+        "//mosac/cr/utils:ot_helper",
+        "//mosac/cr/utils:vole_adapter",
+    ],
+)
+
+mosac_cc_library(
+    name = "cr",
+    srcs = [
+        "cr.cc",
+    ],
+    hdrs = [
+        "cr.h",
+    ],
+    deps = [
+        "//mosac/context",
+        "//mosac/context:state",
+        "//mosac/ss:ss_type",
+        "//mosac/utils:field",
+        "//mosac/utils:vec_op",
+    ],
+)
+
+mosac_cc_test(
+    name = "cr_test",
+    srcs = ["cr_test.cc"],
+    deps = [
+        ":cr",
+        ":true_cr",
+        ":fake_cr",
+        "//mosac/context:register",
+        "//mosac/utils:test_util",
+        "//mosac/ss:ss_type",
+    ],
+)

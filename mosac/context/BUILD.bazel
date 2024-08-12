@@ -1,0 +1,49 @@
+load("//bazel:mosac.bzl", "mosac_cc_library", "mosac_cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+mosac_cc_library(
+    name = "context",
+    hdrs = ["context.h"],
+    deps = [
+        "//mosac/context:state",
+         "@yacl//yacl/link",
+    ],
+)
+
+mosac_cc_library(
+    name = "state",
+    srcs = ["state.cc"],
+    hdrs = ["state.h"],
+    deps = [
+        "@yacl//yacl/crypto/tools:prg",
+        "@yacl//yacl/crypto/base/hash:hash_utils",
+        "@yacl//yacl/crypto/utils:rand",
+        "@yacl//yacl/link",
+    ],
+)
+
+mosac_cc_library(
+    name = "register",
+    hdrs = ["register.h"],
+    deps = [
+        ":context",
+        ":state",
+        "//mosac/cr:cr",
+        "//mosac/cr:true_cr",
+        "//mosac/cr:fake_cr",
+        "//mosac/ss:protocol",
+    ],
+)
+
+mosac_cc_test(
+    name = "context_test",
+    srcs = ["context_test.cc"],
+    deps = [
+        ":context",
+        ":register",
+        "//mosac/utils:test_util",
+        "@yacl//yacl/base:int128",
+        "@yacl//yacl/utils:serialize",
+    ],
+)

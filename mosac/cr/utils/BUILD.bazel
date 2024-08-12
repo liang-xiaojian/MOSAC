@@ -1,0 +1,217 @@
+load("//bazel:mosac.bzl", "mosac_cc_library", "mosac_cc_test")
+load("@yacl//bazel:yacl.bzl", "AES_COPT_FLAGS")
+
+package(default_visibility = ["//visibility:public"])
+
+mosac_cc_library(
+    name = "ot_adapter",
+    srcs = [
+        "ot_adapter.cc",
+    ],
+    hdrs = [
+        "ot_adapter.h",
+    ],
+    deps = [
+        "@yacl//yacl/base:dynamic_bitset",
+        "@yacl//yacl/crypto/primitives/ot:base_ot",
+        "@yacl//yacl/crypto/primitives/ot:kos_ote",
+        "@yacl//yacl/crypto/primitives/ot:softspoken_ote",
+        "@yacl//yacl/crypto/primitives/ot:ot_store",
+        "@yacl//yacl/crypto/utils:rand",
+    ],
+)
+
+mosac_cc_test(
+    name = "ot_adapter_test",
+    srcs = [
+        "ot_adapter_test.cc",
+    ],
+    deps = [
+        "//mosac/cr/utils:ot_adapter",
+        "//mosac/utils:test_util",
+    ],
+)
+
+mosac_cc_library(
+    name = "shuffle",
+    srcs = [
+        "shuffle.cc",
+    ],
+    hdrs = [
+        "shuffle.h",
+    ],
+    copts = AES_COPT_FLAGS,
+    deps = [
+        ":ot_adapter",
+        "//mosac/context:state",
+        "//mosac/ss:ss_type",
+        "@yacl//yacl/math:gadget",
+        "@yacl//yacl/base:dynamic_bitset",
+        "@yacl//yacl/crypto/primitives/ot:gywz_ote",
+        "@yacl//yacl/crypto/utils:rand",
+        "@yacl//yacl/crypto/base/aes:aes_opt",
+        "@yacl//yacl/crypto/base/aes:aes_intrinsics",
+    ],
+)
+
+mosac_cc_library(
+    name = "ot_helper",
+    srcs = [
+        "ot_helper.cc",
+    ],
+    hdrs = [
+        "ot_helper.h",
+    ],
+    deps = [
+        ":ot_adapter",
+        ":shuffle",
+        "//mosac/context:state",
+        "//mosac/ss:ss_type",
+        "//mosac/utils:field",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/crypto/primitives/ot:gywz_ote",
+        "@yacl//yacl/math:gadget",
+        "@yacl//yacl/crypto/tools:crhash",
+    ],
+)
+
+mosac_cc_test(
+    name = "ot_helper_test",
+    srcs = [
+        "ot_helper_test.cc",
+    ],
+    deps = [
+        ":ot_helper",
+        "//mosac/context:register",
+        "//mosac/cr",
+        "//mosac/utils:test_util",
+    ],
+)
+
+mosac_cc_library(
+    name = "linear_code",
+    hdrs = ["linear_code.h"],
+    copts = AES_COPT_FLAGS,
+    deps = [
+        "//mosac/ss:ss_type",
+        "//mosac/utils:field",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/base:int128",
+        "@yacl//yacl/crypto/tools:rp",
+        "@yacl//yacl/utils:thread_pool",
+    ]  + select({
+        "@platforms//cpu:aarch64": [
+            "@com_github_dltcollab_sse2neon//:sse2neon",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+mosac_cc_test(
+    name = "linear_code_test",
+    srcs = ["linear_code_test.cc"],
+    deps = [
+        ":linear_code",
+        "//mosac/ss:ss_type",
+        "//mosac/utils:vec_op",
+    ],
+)
+
+mosac_cc_library(
+    name = "mpfss",
+    srcs = [
+        "mpfss.cc",
+    ],
+    hdrs = [
+        "mpfss.h",
+    ],
+    deps = [
+        "//mosac/context:state",
+        "//mosac/ss:ss_type",
+        "//mosac/utils:field",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/base:byte_container_view",
+        "@yacl//yacl/crypto/primitives/ot:gywz_ote",
+        "@yacl//yacl/crypto/primitives/ot:ot_store",
+        "@yacl//yacl/crypto/tools:crhash",
+        "@yacl//yacl/crypto/utils:rand",
+        "@yacl//yacl/math:gadget",
+    ],
+)
+
+mosac_cc_library(
+    name = "vole",
+    srcs = [
+        "vole.cc",
+    ],
+    hdrs = [
+        "vole.h",
+    ],
+    deps = [
+        ":linear_code",
+        ":mpfss",
+        "//mosac/context:state",
+        "//mosac/ss:ss_type",
+        "//mosac/utils:field",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/base:byte_container_view",
+        "@yacl//yacl/crypto/primitives/ot:ot_store",
+        "@yacl//yacl/crypto/utils:rand",
+        "@yacl//yacl/math:gadget",
+    ],
+)
+
+mosac_cc_test(
+    name = "vole_test",
+    srcs = [
+        "vole_test.cc",
+    ],
+    deps = [
+        ":vole",
+        ":mpfss",
+        "//mosac/context:register",
+        "//mosac/cr",
+        "//mosac/utils:test_util",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/crypto/utils:rand",
+    ],
+)
+
+mosac_cc_library(
+    name = "vole_adapter",
+    srcs = [
+        "vole_adapter.cc",
+    ],
+    hdrs = [
+        "vole_adapter.h",
+    ],
+    deps = [
+        ":vole",
+        ":linear_code",
+        ":ot_adapter",
+        ":ot_helper",
+        "//mosac/context:state",
+        "//mosac/ss:ss_type",
+        "//mosac/utils:field",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/crypto/primitives/ot:ot_store",
+    ],
+)
+
+mosac_cc_test(
+    name = "vole_adapter_test",
+    srcs = [
+        "vole_adapter_test.cc",
+    ],
+    deps = [
+        ":vole",
+        ":vole_adapter",
+        ":ot_adapter",
+        ":ot_helper",
+        "//mosac/context:register",
+        "//mosac/cr",
+        "//mosac/utils:test_util",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/crypto/utils:rand",
+    ],
+)
