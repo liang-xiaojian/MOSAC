@@ -320,8 +320,9 @@ class op128 {
   // Inner product
   static kFp128 inline InPro(absl::Span<const kFp128> lhs,
                              absl::Span<const kFp128> rhs) {
-    YACL_ENFORCE(lhs.size() == rhs.size());
     const size_t size = lhs.size();
+    YACL_ENFORCE(lhs.size() == rhs.size());
+    YACL_ENFORCE(size > 0);
 
     return yacl::parallel_reduce<
         kFp128, std::function<kFp128(uint64_t, uint64_t)>,

@@ -198,7 +198,8 @@ class Correlation : public State {
         "get num: {} , shuffle set num: {} , shuffle get num: {} , AST set "
         "num: {} , AST get num: {} , N mul num: {}",
         ctx_->GetRank(), b_num_, r_s_num_, r_g_num_, s_s_shape_.size(),
-        s_g_shape_.size(), ast_s_shape_.size(), ast_g_shape_.size());
+        s_g_shape_.size(), ast_s_shape_.size(), ast_g_shape_.size(),
+        n_mul_shape_.size());
     force_cache(b_num_, r_s_num_, r_g_num_, s_s_shape_, s_g_shape_,
                 ast_s_shape_, ast_g_shape_, n_mul_shape_);
   }

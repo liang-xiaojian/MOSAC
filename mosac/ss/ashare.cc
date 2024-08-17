@@ -731,7 +731,7 @@ std::vector<ATy> SShuffleAGet_cache(std::shared_ptr<Context>& ctx,
   const size_t num = in.size();
   auto cr = ctx->GetState<Correlation>();
 
-  cr->ASTGet(num);
+  cr->ASTGet_cache(num);
   auto _a = ZerosA_cache(ctx, num);
   auto _b = ZerosA_cache(ctx, num);
   auto mask_A =
@@ -767,6 +767,7 @@ std::vector<ATy> SShuffleA_cache(std::shared_ptr<Context>& ctx,
 
 std::vector<ATy> NMulA(std::shared_ptr<Context>& ctx,
                        absl::Span<const ATy> in) {
+  SPDLOG_INFO("Call NMUL");
   const size_t num = in.size();
   auto cr = ctx->GetState<Correlation>();
 
