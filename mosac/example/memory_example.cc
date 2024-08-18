@@ -12,10 +12,10 @@ auto OSS(const std::shared_ptr<yacl::link::Context> &lctx,
   auto rank = lctx->Rank();
 
   auto context = std::make_shared<Context>(lctx);
-  SetupContext(context, true);
+  SetupContext(context, false /* memory model or socket model */);
   auto prot = context->GetState<Protocol>();
 
-  // cache
+  // cache offline randomness
   if (rank == 0) {
     auto shares = prot->SetA(set0, true);
     auto shuffle = prot->SShuffleA(shares, true);
@@ -27,6 +27,7 @@ auto OSS(const std::shared_ptr<yacl::link::Context> &lctx,
   }
   context->GetState<Correlation>()->force_cache();
 
+  // scheme with online
   std::vector<ATy> shares;
   if (rank == 0) {
     shares = prot->SetA(set0);

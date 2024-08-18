@@ -684,6 +684,7 @@ std::vector<ATy> SShuffleASet(std::shared_ptr<Context>& ctx,
 
   return ret;
 }
+
 std::vector<ATy> SShuffleASet_cache(std::shared_ptr<Context>& ctx,
                                     absl::Span<const ATy> in) {
   const size_t num = in.size();
@@ -696,6 +697,18 @@ std::vector<ATy> SShuffleASet_cache(std::shared_ptr<Context>& ctx,
   auto mask_P = A2P_cache(ctx, absl::MakeConstSpan(mask_A));
   auto c = SetA_cache(ctx, mask_P);
   auto ret = AddAA_cache(ctx, absl::MakeConstSpan(c), absl::MakeConstSpan(_b));
+
+  auto rand_p = RandP_cache(ctx, 1);
+  auto ones_p = OnesP_cache(ctx, num);
+  auto ext_rand_p = ScalarMulPP_cache(ctx, rand_p[0], ones_p);
+  auto in_sub_rand = SubAP_cache(ctx, in, ext_rand_p);
+  auto product_in = NMulA_cache(ctx, in_sub_rand);
+
+  auto ret_sub_rand = SubAP_cache(ctx, ret, ext_rand_p);
+  auto product_ret = NMulA_cache(ctx, ret_sub_rand);
+  auto check_zeros = SubAA_cache(ctx, product_in, product_ret);
+  [[maybe_unused]] auto zeros = A2P_cache(ctx, check_zeros);
+
   return ret;
 }
 
@@ -726,6 +739,7 @@ std::vector<ATy> SShuffleAGet(std::shared_ptr<Context>& ctx,
 
   return ret;
 }
+
 std::vector<ATy> SShuffleAGet_cache(std::shared_ptr<Context>& ctx,
                                     absl::Span<const ATy> in) {
   const size_t num = in.size();
@@ -740,6 +754,18 @@ std::vector<ATy> SShuffleAGet_cache(std::shared_ptr<Context>& ctx,
 
   auto c = GetA_cache(ctx, num);
   auto ret = AddAA_cache(ctx, absl::MakeConstSpan(c), absl::MakeConstSpan(_b));
+
+  auto rand_p = RandP_cache(ctx, 1);
+  auto ones_p = OnesP_cache(ctx, num);
+  auto ext_rand_p = ScalarMulPP_cache(ctx, rand_p[0], ones_p);
+  auto in_sub_rand = SubAP_cache(ctx, in, ext_rand_p);
+  auto product_in = NMulA_cache(ctx, in_sub_rand);
+
+  auto ret_sub_rand = SubAP_cache(ctx, ret, ext_rand_p);
+  auto product_ret = NMulA_cache(ctx, ret_sub_rand);
+  auto check_zeros = SubAA_cache(ctx, product_in, product_ret);
+  [[maybe_unused]] auto zeros = A2P_cache(ctx, check_zeros);
+
   return ret;
 }
 
@@ -767,7 +793,6 @@ std::vector<ATy> SShuffleA_cache(std::shared_ptr<Context>& ctx,
 
 std::vector<ATy> NMulA(std::shared_ptr<Context>& ctx,
                        absl::Span<const ATy> in) {
-  SPDLOG_INFO("Call NMUL");
   const size_t num = in.size();
   auto cr = ctx->GetState<Correlation>();
 
