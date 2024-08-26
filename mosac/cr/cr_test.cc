@@ -142,7 +142,7 @@ TEST(CrTest, ShuffleWork) {
 
 TEST(CrTest, ASTWork) {
   auto context = TestParam::GetContext();
-  const size_t num = 10;
+  const size_t num = 100;
 
   auto rank0 = std::async([&] {
     auto cr = context[0]->GetState<Correlation>();

@@ -242,15 +242,26 @@ void ASTSend(std::shared_ptr<Connection>& conn,
 
   const size_t ot_num = ym::Log2Ceil(num);
   const size_t required_ot = num * ot_num;
-  std::vector<uint128_t> ot_buff(required_ot);
-  yacl::dynamic_bitset<uint128_t> choices(required_ot);
 
-  ot_ptr->recv_rcot(absl::MakeSpan(ot_buff), choices);
+  // yacl::dynamic_bitset<uint128_t> choices(required_ot);
+
+  yacl::dynamic_bitset<uint128_t> choices;
+  for (size_t i = 0; i < num; ++i) {
+    yacl::dynamic_bitset<uint128_t> tmp_choices;
+    tmp_choices.append(perm[i]);
+    tmp_choices.resize(ot_num);
+    choices.append(tmp_choices);
+  }
+
+  YACL_ENFORCE(choices.size() == required_ot);
+
+  std::vector<uint128_t> ot_buff(required_ot);
+  ot_ptr->recv_cot(absl::MakeSpan(ot_buff), choices);
   auto ot_store = yc::MakeOtRecvStore(choices, ot_buff);
   for (size_t i = 0; i < num; ++i) {
     auto ot_recv = ot_store.NextSlice(ot_num);
-    yc::GywzOtExtRecv(conn, ot_recv, num, perm[i],
-                      absl::MakeSpan(punctured_msgs));
+    yc::GywzOtExtRecv_fixed_index(conn, ot_recv, num,
+                                  absl::MakeSpan(punctured_msgs));
     // break correlation
     auto extend = SeedExtend(absl::MakeSpan(punctured_msgs), repeat + 1);
     // set punctured point to be zero
@@ -352,12 +363,12 @@ void ASTRecv(std::shared_ptr<Connection> conn,
   const size_t ot_num = ym::Log2Ceil(num);
   const size_t required_ot = num * ot_num;
   std::vector<uint128_t> ot_buff(required_ot);
-  ot_ptr->send_rcot(absl::MakeSpan(ot_buff));
+  ot_ptr->send_cot(absl::MakeSpan(ot_buff));
   auto ot_store = yc::MakeCompactOtSendStore(ot_buff, ot_ptr->GetDelta());
 
   for (size_t i = 0; i < num; ++i) {
     auto ot_send = ot_store.NextSlice(ot_num);
-    yc::GywzOtExtSend(conn, ot_send, num, absl::MakeSpan(all_msgs));
+    yc::GywzOtExtSend_fixed_index(conn, ot_send, num, absl::MakeSpan(all_msgs));
     // break correlation
     auto extend = SeedExtend(absl::MakeSpan(all_msgs), repeat + 1);
 

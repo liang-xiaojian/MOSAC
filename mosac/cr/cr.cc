@@ -9,7 +9,7 @@ BeaverTy Correlation::BeaverTriple(size_t num) {
   if (cache_ != nullptr && cache_->BeaverCacheSize() >= num) {
     return cache_->BeaverTriple(num);
   }
-  SPDLOG_INFO("BeaverTriple Miss match");
+  SPDLOG_INFO("BeaverTriple Uncached");
   std::vector<internal::ATy> a(num);
   std::vector<internal::ATy> b(num);
   std::vector<internal::ATy> c(num);
@@ -21,7 +21,7 @@ AuthTy Correlation::RandomSet(size_t num) {
   if (cache_ != nullptr && cache_->RandomSetSize() >= num) {
     return cache_->RandomSet(num);
   }
-  SPDLOG_INFO("RandomSet Miss match");
+  SPDLOG_INFO("RandomSet Uncached");
   std::vector<internal::ATy> ret(num);
   RandomSet(absl::MakeSpan(ret));
   return AuthTy(std::move(ret));
@@ -31,7 +31,7 @@ AuthTy Correlation::RandomGet(size_t num) {
   if (cache_ != nullptr && cache_->RandomGetSize() >= num) {
     return cache_->RandomGet(num);
   }
-  SPDLOG_INFO("RandomGet Miss match");
+  SPDLOG_INFO("RandomGet Uncached");
   std::vector<internal::ATy> ret(num);
   RandomGet(absl::MakeSpan(ret));
   return AuthTy(std::move(ret));
@@ -51,7 +51,7 @@ AuthTy Correlation::RandomAuth(size_t num) {
         absl::MakeSpan(reinterpret_cast<internal::PTy*>(out.data()), 2 * num));
     return AuthTy(std::move(out));
   }
-  SPDLOG_INFO("RandomAuth Miss match");
+  SPDLOG_INFO("RandomAuth Uncached");
   std::vector<internal::ATy> ret(num);
   RandomAuth(absl::MakeSpan(ret));
   return AuthTy(std::move(ret));
@@ -61,7 +61,7 @@ ShuffleSTy Correlation::ShuffleSet(size_t num, size_t repeat) {
   if (cache_ != nullptr && cache_->ShuffleSetCount(num, repeat)) {
     return cache_->ShuffleSet(num, repeat);
   }
-  SPDLOG_INFO("Shuffle Set Miss match");
+  SPDLOG_INFO("Shuffle Set Uncached");
   std::vector<internal::PTy> delta(num * repeat);
   std::vector<size_t> perm = GenPerm(num);
   ShuffleSet(absl::MakeSpan(perm), absl::MakeSpan(delta), repeat);
@@ -72,7 +72,7 @@ ShuffleGTy Correlation::ShuffleGet(size_t num, size_t repeat) {
   if (cache_ != nullptr && cache_->ShuffleGetCount(num, repeat)) {
     return cache_->ShuffleGet(num, repeat);
   }
-  SPDLOG_INFO("Shuffle Get Miss match");
+  SPDLOG_INFO("Shuffle Get Uncached");
   std::vector<internal::PTy> a(num * repeat);
   std::vector<internal::PTy> b(num * repeat);
   ShuffleGet(absl::MakeSpan(a), absl::MakeSpan(b), repeat);
@@ -83,7 +83,7 @@ ASTSTy Correlation::ASTSet(size_t num) {
   if (cache_ != nullptr && cache_->ASTSetCount(num)) {
     return cache_->ASTSet(num);
   }
-  SPDLOG_INFO("AST Set Miss match");
+  SPDLOG_INFO("AST Set Uncached");
   std::vector<internal::ATy> a(num);
   std::vector<internal::ATy> b(num);
   std::vector<size_t> perm = ASTSet(absl::MakeSpan(a), absl::MakeSpan(b));
@@ -94,7 +94,7 @@ ASTGTy Correlation::ASTGet(size_t num) {
   if (cache_ != nullptr && cache_->ASTGetCount(num)) {
     return cache_->ASTGet(num);
   }
-  SPDLOG_INFO("AST Get Miss match");
+  SPDLOG_INFO("AST Get Uncached");
   std::vector<internal::ATy> a(num);
   std::vector<internal::ATy> b(num);
   ASTGet(absl::MakeSpan(a), absl::MakeSpan(b));
@@ -105,7 +105,7 @@ NMulTy Correlation::NMul(size_t num) {
   if (cache_ != nullptr && cache_->NMulCount(num)) {
     return cache_->NMul(num);
   }
-  SPDLOG_INFO("NMul Miss match");
+  SPDLOG_INFO("NMul Uncached");
   std::vector<internal::ATy> r(num);
   internal::ATy mul_inv = NMul(absl::MakeSpan(r));
   return NMulTy(std::move(r), mul_inv);
