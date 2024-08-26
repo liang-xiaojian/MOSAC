@@ -40,7 +40,7 @@ auto OSS(const std::shared_ptr<yacl::link::Context> &lctx,
 }
 
 int main() {
-  size_t num = 100;
+  size_t num = 10000;
   auto val = OP::Rand(num);
 
   auto lctxs = SetupWorld(2);

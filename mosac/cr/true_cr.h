@@ -135,6 +135,12 @@ class TrueCorrelation : public Correlation {
   internal::ATy _Func(absl::Span<const internal::ATy> in,
                       const internal::ATy& x);
   std::vector<internal::ATy> Inv(absl::Span<const internal::ATy> in);
+
+  // BeaverTriple With Chosen B
+  void BeaverTripleWithChosenB(absl::Span<internal::ATy> a,
+                               absl::Span<const internal::ATy> b,
+                               absl::Span<internal::ATy> c);
+
   // TODO:
   // internal::PTy SingleOpenAndCheck(const internal::ATy& in);
 };

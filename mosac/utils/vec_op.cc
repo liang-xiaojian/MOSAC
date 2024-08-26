@@ -60,6 +60,30 @@ void op64::Neg(absl::Span<const kFp64> in, absl::Span<kFp64> out) {
   std::transform(in.begin(), in.end(), out.begin(), kFp64::Neg);
 }
 
+void op64::Sqrt(absl::Span<const kFp64> in, absl::Span<kFp64> out) {
+  YACL_ENFORCE(in.size() == out.size());
+  auto mod = yacl::math::MPInt(Prime64);
+  auto power = yacl::math::MPInt((Prime64 + 1) >> 2);
+
+  yacl::parallel_for(0, in.size(), [&](uint64_t bg, uint64_t ed) {
+    std::transform(in.cbegin() + bg, in.cbegin() + ed, out.begin() + bg,
+                   [&](const kFp64 &val) {
+                     auto tmp = yacl::math::MPInt(0);
+                     yacl::math::MPInt::PowMod(yacl::math::MPInt(val.GetVal()),
+                                               power, mod, &tmp);
+                     return kFp64(tmp.Get<uint64_t>());
+                   });
+  });
+
+  // std::transform(in.cbegin(), in.cend(), out.begin(), [&](const kFp128 &val)
+  // {
+  //   auto tmp = yacl::math::MPInt(0);
+  //   yacl::math::MPInt::PowMod(yacl::math::MPInt(val.GetVal()), power, mod,
+  //                             &tmp);
+  //   return kFp128(tmp.Get<uint128_t>());
+  // });
+}
+
 template <size_t N>
 kFp64 BatchInv64(absl::Span<const kFp64> in, absl::Span<kFp64> out,
                  kFp64 total = kFp64::One()) {

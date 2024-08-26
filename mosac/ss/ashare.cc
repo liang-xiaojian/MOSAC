@@ -678,7 +678,10 @@ std::vector<ATy> SShuffleASet(std::shared_ptr<Context>& ctx,
   auto ret_sub_rand = SubAP(ctx, ret, ext_rand_p);
   auto product_ret = NMulA(ctx, ret_sub_rand);
   auto check_zeros = SubAA(ctx, product_in, product_ret);
-  auto zeros = A2P(ctx, check_zeros);
+
+  auto rand_a = RandA(ctx, 1);  // mask
+  auto check_zeros_mul = MulAA(ctx, check_zeros, rand_a);
+  auto zeros = A2P(ctx, check_zeros_mul);
 
   YACL_ENFORCE(zeros.size() == 1 && zeros[0] == PTy(0));
 
@@ -707,7 +710,10 @@ std::vector<ATy> SShuffleASet_cache(std::shared_ptr<Context>& ctx,
   auto ret_sub_rand = SubAP_cache(ctx, ret, ext_rand_p);
   auto product_ret = NMulA_cache(ctx, ret_sub_rand);
   auto check_zeros = SubAA_cache(ctx, product_in, product_ret);
-  [[maybe_unused]] auto zeros = A2P_cache(ctx, check_zeros);
+
+  auto rand_a = RandA_cache(ctx, 1);
+  auto check_zeros_mul = MulAA_cache(ctx, check_zeros, rand_a);
+  [[maybe_unused]] auto zeros = A2P_cache(ctx, check_zeros_mul);
 
   return ret;
 }
@@ -733,7 +739,10 @@ std::vector<ATy> SShuffleAGet(std::shared_ptr<Context>& ctx,
   auto ret_sub_rand = SubAP(ctx, ret, ext_rand_p);
   auto product_ret = NMulA(ctx, ret_sub_rand);
   auto check_zeros = SubAA(ctx, product_in, product_ret);
-  auto zeros = A2P(ctx, check_zeros);
+
+  auto rand_a = RandA(ctx, 1);  // mask
+  auto check_zeros_mul = MulAA(ctx, check_zeros, rand_a);
+  auto zeros = A2P(ctx, check_zeros_mul);
 
   YACL_ENFORCE(zeros.size() == 1 && zeros[0] == PTy(0));
 
@@ -764,7 +773,10 @@ std::vector<ATy> SShuffleAGet_cache(std::shared_ptr<Context>& ctx,
   auto ret_sub_rand = SubAP_cache(ctx, ret, ext_rand_p);
   auto product_ret = NMulA_cache(ctx, ret_sub_rand);
   auto check_zeros = SubAA_cache(ctx, product_in, product_ret);
-  [[maybe_unused]] auto zeros = A2P_cache(ctx, check_zeros);
+
+  auto rand_a = RandA_cache(ctx, 1);
+  auto check_zeros_mul = MulAA_cache(ctx, check_zeros, rand_a);
+  [[maybe_unused]] auto zeros = A2P_cache(ctx, check_zeros_mul);
 
   return ret;
 }

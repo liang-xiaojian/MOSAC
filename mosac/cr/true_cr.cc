@@ -21,9 +21,11 @@ void TrueCorrelation::BeaverTriple(absl::Span<internal::ATy> a,
   auto p_A = p_abcAC_span.subspan(3 * num, num);
   auto p_C = p_abcAC_span.subspan(4 * num, num);
 
+  internal::op::Rand(absl::MakeSpan(p_b));
+
   auto conn = ctx_->GetConnection();
   ot::OtHelper(ot_sender_, ot_receiver_)
-      .BeaverTripleExtend(conn, p_a, p_b, p_c, p_A, p_C);
+      .BeaverTripleExtendWithChosenB(conn, p_a, p_b, p_c, p_A, p_C);
 
   std::vector<internal::ATy> auth_abcAC(num * 5);
   auto auth_abcAC_span = absl::MakeSpan(auth_abcAC);
@@ -398,59 +400,91 @@ std::vector<internal::ATy> TrueCorrelation::Mul(
   return internal::Pack(absl::MakeSpan(val), absl::MakeSpan(mac));
 }
 
+// std::vector<internal::ATy> TrueCorrelation::Mul(
+//     absl::Span<const internal::ATy> lhs, absl::Span<const internal::ATy> rhs)
+//     {
+//   YACL_ENFORCE(lhs.size() == rhs.size());
+//   const size_t num = lhs.size();
+
+//   auto a = std::vector<internal::ATy>(num, {0, 0});
+//   auto b = std::vector<internal::ATy>(num, {0, 0});
+//   auto c = std::vector<internal::ATy>(num, {0, 0});
+//   BeaverTriple(absl::MakeSpan(a), absl::MakeSpan(b), absl::MakeSpan(c));
+
+//   auto u = internal::op::Sub(
+//       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(lhs.data()),
+//                           2 * num),
+//       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(a.data()),
+//                           2 * num));
+//   auto v = internal::op::Sub(
+//       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(rhs.data()),
+//                           2 * num),
+//       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(b.data()),
+//                           2 * num));
+
+//   auto u_p = OpenAndCheck(absl::MakeConstSpan(
+//       reinterpret_cast<const internal::ATy*>(u.data()), num));
+//   auto v_p = OpenAndCheck(absl::MakeConstSpan(
+//       reinterpret_cast<const internal::ATy*>(v.data()), num));
+
+//   auto xyb = Mul(lhs, absl::MakeConstSpan(v_p));
+//   auto xay = Mul(absl::MakeConstSpan(u_p), rhs);
+//   auto xayb_val =
+//       internal::op::Mul(absl::MakeConstSpan(u_p), absl::MakeConstSpan(v_p));
+//   auto xayb_mac = internal::op::ScalarMul(key_,
+//   absl::MakeConstSpan(xayb_val));
+
+//   if (ctx_->GetRank() != 0) {
+//     xayb_val = internal::op::Zeros(num);
+//   }
+
+//   auto xayb = internal::Pack(absl::MakeConstSpan(xayb_val),
+//                              absl::MakeConstSpan(xayb_mac));
+
+//   internal::op::AddInplace(
+//       absl::MakeSpan(reinterpret_cast<internal::PTy*>(c.data()), 2 * num),
+//       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(xyb.data()),
+//                           2 * num));
+
+//   internal::op::AddInplace(
+//       absl::MakeSpan(reinterpret_cast<internal::PTy*>(c.data()), 2 * num),
+//       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(xay.data()),
+//                           2 * num));
+
+//   internal::op::SubInplace(
+//       absl::MakeSpan(reinterpret_cast<internal::PTy*>(c.data()), 2 * num),
+//       absl::MakeConstSpan(reinterpret_cast<const
+//       internal::PTy*>(xayb.data()),
+//                           2 * num));
+
+//   return c;
+// }
+
 std::vector<internal::ATy> TrueCorrelation::Mul(
     absl::Span<const internal::ATy> lhs, absl::Span<const internal::ATy> rhs) {
   YACL_ENFORCE(lhs.size() == rhs.size());
-  const size_t num = lhs.size();
+  const auto num = lhs.size();
 
   auto a = std::vector<internal::ATy>(num, {0, 0});
-  auto b = std::vector<internal::ATy>(num, {0, 0});
   auto c = std::vector<internal::ATy>(num, {0, 0});
-  BeaverTriple(absl::MakeSpan(a), absl::MakeSpan(b), absl::MakeSpan(c));
 
-  auto u = internal::op::Sub(
+  BeaverTripleWithChosenB(absl::MakeSpan(a), rhs, absl::MakeSpan(c));
+
+  internal::op::Sub(
       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(lhs.data()),
-                          2 * num),
+                          num * 2),
       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(a.data()),
-                          2 * num));
-  auto v = internal::op::Sub(
-      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(rhs.data()),
-                          2 * num),
-      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(b.data()),
-                          2 * num));
+                          num * 2),
+      absl::MakeSpan(reinterpret_cast<internal::PTy*>(a.data()), num * 2));
 
-  auto u_p = OpenAndCheck(absl::MakeConstSpan(
-      reinterpret_cast<const internal::ATy*>(u.data()), num));
-  auto v_p = OpenAndCheck(absl::MakeConstSpan(
-      reinterpret_cast<const internal::ATy*>(v.data()), num));
-
-  auto xyb = Mul(lhs, absl::MakeConstSpan(v_p));
-  auto xay = Mul(absl::MakeConstSpan(u_p), rhs);
-  auto xayb_val =
-      internal::op::Mul(absl::MakeConstSpan(u_p), absl::MakeConstSpan(v_p));
-  auto xayb_mac = internal::op::ScalarMul(key_, absl::MakeConstSpan(xayb_val));
-
-  if (ctx_->GetRank() != 0) {
-    xayb_val = internal::op::Zeros(num);
-  }
-
-  auto xayb = internal::Pack(absl::MakeConstSpan(xayb_val),
-                             absl::MakeConstSpan(xayb_mac));
+  auto diff = OpenAndCheck(absl::MakeConstSpan(a));
+  auto diff_mul_rhs = Mul(absl::MakeConstSpan(diff), absl::MakeConstSpan(rhs));
 
   internal::op::AddInplace(
-      absl::MakeSpan(reinterpret_cast<internal::PTy*>(c.data()), 2 * num),
-      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(xyb.data()),
-                          2 * num));
-
-  internal::op::AddInplace(
-      absl::MakeSpan(reinterpret_cast<internal::PTy*>(c.data()), 2 * num),
-      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(xay.data()),
-                          2 * num));
-
-  internal::op::SubInplace(
-      absl::MakeSpan(reinterpret_cast<internal::PTy*>(c.data()), 2 * num),
-      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(xayb.data()),
-                          2 * num));
+      absl::MakeSpan(reinterpret_cast<internal::PTy*>(c.data()), num * 2),
+      absl::MakeConstSpan(
+          reinterpret_cast<const internal::PTy*>(diff_mul_rhs.data()),
+          num * 2));
 
   return c;
 }
@@ -503,6 +537,118 @@ std::vector<internal::ATy> TrueCorrelation::Inv(
   auto pub = OpenAndCheck(absl::MakeConstSpan(mul));
   auto inv = internal::op::Inv(absl::MakeConstSpan(pub));
   return Mul(absl::MakeConstSpan(r), absl::MakeConstSpan(inv));
+}
+
+// Beaver Triple With Chosen B
+void TrueCorrelation::BeaverTripleWithChosenB(absl::Span<internal::ATy> a,
+                                              absl::Span<const internal::ATy> b,
+                                              absl::Span<internal::ATy> c) {
+  const size_t num = c.size();
+  YACL_ENFORCE(num == a.size());
+  YACL_ENFORCE(num == b.size());
+
+  auto p_b = internal::ExtractVal(b);
+
+  auto p_acAC = internal::op::Zeros(num * 4);
+  auto p_acAC_span = absl::MakeSpan(p_acAC);
+  auto p_a = p_acAC_span.subspan(0 * num, num);
+  auto p_c = p_acAC_span.subspan(1 * num, num);
+  auto p_A = p_acAC_span.subspan(2 * num, num);
+  auto p_C = p_acAC_span.subspan(3 * num, num);
+
+  auto conn = ctx_->GetConnection();
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .BeaverTripleExtendWithChosenB(conn, p_a, p_b, p_c, p_A, p_C);
+
+  std::vector<internal::ATy> auth_acAC(num * 4);
+  auto auth_acAC_span = absl::MakeSpan(auth_acAC);
+
+  std::vector<internal::ATy> remote_auth_acAC(num * 4);
+  auto remote_auth_acAC_span = absl::MakeSpan(remote_auth_acAC);
+
+  if (ctx_->GetRank() == 0) {
+    AuthSet(p_acAC_span, auth_acAC_span);
+    AuthGet(remote_auth_acAC_span);
+  } else {
+    AuthGet(remote_auth_acAC_span);
+    AuthSet(p_acAC_span, auth_acAC_span);
+  }
+
+  // length double
+  internal::op::Add(
+      absl::MakeConstSpan(
+          reinterpret_cast<const internal::PTy*>(auth_acAC.data()), 8 * num),
+      absl::MakeConstSpan(
+          reinterpret_cast<const internal::PTy*>(remote_auth_acAC.data()),
+          8 * num),
+      absl::MakeSpan(reinterpret_cast<internal::PTy*>(auth_acAC.data()),
+                     8 * num));
+
+  // return value
+  auto auth_a = auth_acAC_span.subspan(0 * num, num);
+  auto auth_c = auth_acAC_span.subspan(1 * num, num);
+  memcpy(a.data(), auth_a.data(), num * sizeof(internal::ATy));
+  memcpy(c.data(), auth_c.data(), num * sizeof(internal::ATy));
+
+  // ---- consistency check ----
+  auto auth_A = auth_acAC_span.subspan(2 * num, num);
+  auto auth_C = auth_acAC_span.subspan(3 * num, num);
+  auto seed = conn->SyncSeed();
+  auto p_coef = internal::op::Rand(seed, num);
+  std::vector<internal::ATy> coef(num, {0, 0});
+  std::transform(p_coef.cbegin(), p_coef.cend(), coef.begin(),
+                 [](const internal::PTy& val) -> internal::ATy {
+                   return {val, val};
+                 });
+
+  internal::op::Mul(
+      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(auth_A.data()),
+                          2 * num),
+      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(coef.data()),
+                          2 * num),
+      absl::MakeSpan(reinterpret_cast<internal::PTy*>(auth_A.data()), 2 * num));
+
+  internal::op::Add(
+      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(auth_a.data()),
+                          2 * num),
+      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(auth_A.data()),
+                          2 * num),
+      absl::MakeSpan(reinterpret_cast<internal::PTy*>(auth_A.data()), 2 * num));
+
+  internal::op::Mul(
+      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(auth_C.data()),
+                          2 * num),
+      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(coef.data()),
+                          2 * num),
+      absl::MakeSpan(reinterpret_cast<internal::PTy*>(auth_C.data()), 2 * num));
+
+  internal::op::Add(
+      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(auth_c.data()),
+                          2 * num),
+      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(auth_C.data()),
+                          2 * num),
+      absl::MakeSpan(reinterpret_cast<internal::PTy*>(auth_C.data()), 2 * num));
+
+  // internal::PTy type
+  auto aA_cC = OpenAndCheck(auth_acAC_span.subspan(2 * num, 2 * num));
+  auto aA_cC_span = absl::MakeSpan(aA_cC);
+  auto aA = aA_cC_span.subspan(0, num);
+  auto cC = aA_cC_span.subspan(num, num);
+
+  internal::op::Mul(aA, p_b, aA);
+
+  auto buf = conn->Exchange(
+      yacl::ByteContainerView(aA.data(), num * sizeof(internal::PTy)));
+  YACL_ENFORCE(static_cast<uint64_t>(buf.size()) ==
+               num * sizeof(internal::PTy));
+  auto remote_aA =
+      absl::MakeSpan(reinterpret_cast<internal::PTy*>(buf.data()), num);
+
+  internal::op::Add(aA, remote_aA, aA);
+  for (size_t i = 0; i < num; ++i) {
+    YACL_ENFORCE(cC[i] == aA[i], "{} : cC is {}", i, cC[i].GetVal());
+  }
+  // ---- consistency check ----
 }
 
 }  // namespace mosac

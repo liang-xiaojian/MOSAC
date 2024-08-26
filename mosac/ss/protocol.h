@@ -16,8 +16,8 @@ namespace yc = yacl::crypto;
 
 using PTy = internal::PTy;
 using ATy = internal::ATy;
-using GTy = internal::GTy;
-using MTy = internal::MTy;
+// using GTy = internal::GTy;
+// using MTy = internal::MTy;
 using OP = internal::op;
 
 class Protocol : public State {
@@ -79,9 +79,9 @@ class Protocol : public State {
   // convert
   std::vector<PTy> A2P(absl::Span<const ATy> in, bool cache = false);
   std::vector<ATy> P2A(absl::Span<const PTy> in, bool cache = false);
-  std::vector<MTy> A2M(absl::Span<const ATy> in, bool cache = false);
-  std::vector<GTy> M2G(absl::Span<const MTy> in, bool cache = false);
-  std::vector<GTy> A2G(absl::Span<const ATy> in, bool cache = false);
+  // std::vector<MTy> A2M(absl::Span<const ATy> in, bool cache = false);
+  // std::vector<GTy> M2G(absl::Span<const MTy> in, bool cache = false);
+  // std::vector<GTy> A2G(absl::Span<const ATy> in, bool cache = false);
 
   // others
   std::vector<PTy> Inv(absl::Span<const PTy> in, bool cache = false);

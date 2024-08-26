@@ -43,6 +43,27 @@ class OtHelper {
                           absl::Span<internal::PTy> A,
                           absl::Span<internal::PTy> C);
 
+  // a * b = c && A * b = C (with given b)
+  void MulPPExtendSendWithChosenB(std::shared_ptr<Connection> conn,
+                                  absl::Span<const internal::PTy> b,
+                                  absl::Span<internal::PTy> c,
+                                  absl::Span<internal::PTy> C);
+
+  // a * b = c && A * b = C (with given b)
+  void MulPPExtendRecvWithChosenB(std::shared_ptr<Connection> conn,
+                                  absl::Span<internal::PTy> a,
+                                  absl::Span<internal::PTy> c,
+                                  absl::Span<internal::PTy> A,
+                                  absl::Span<internal::PTy> C);
+
+  // a * b = c && A * b = C (with given b)
+  void BeaverTripleExtendWithChosenB(std::shared_ptr<Connection> conn,
+                                     absl::Span<internal::PTy> a,
+                                     absl::Span<const internal::PTy> b,
+                                     absl::Span<internal::PTy> c,
+                                     absl::Span<internal::PTy> A,
+                                     absl::Span<internal::PTy> C);
+
   void BaseVoleSend(std::shared_ptr<Connection> conn, internal::PTy delta,
                     absl::Span<internal::PTy> c);
 

@@ -7,11 +7,15 @@
 
 namespace mosac {
 
-constexpr static uint64_t Prime64 = 2305843009213697249;  // safe prime
+// Mersenne prime, M_p = 2^p - 1
+// M31 = 2^31 - 1
+// M61 = 2^61 - 1
+// M127 = 2^127 - 1
 
-// prime order for secp128r2
+constexpr static uint64_t Prime64 = ((uint64_t)1 << 61) - 1;
+
 constexpr static uint128_t Prime128 =
-    yacl::MakeUint128(0x3FFFFFFF7FFFFFFF, 0xBE0024720613B5A3);  //
+    (yacl::MakeUint128(0x0, 0x1) << 127) - 1;  //
 
 // static mpz_t GMP_Prime64;
 

@@ -18,7 +18,10 @@ namespace yc = yacl::crypto;
 
 using PTy = kFp128;
 using op = op128;
-using GTy = yc::EcPoint;
+// using PTy = kFp64;
+// using op = op64;
+
+// using GTy = yc::EcPoint;
 
 // static auto Ggroup = yc::EcGroupFactory::Instance().Create(
 //     "secp128r2", yacl::ArgLib = "openssl");
@@ -32,10 +35,10 @@ struct ATy {
   PTy mac;
 };
 // Distribute GTy with Mac (multiplicative share)
-struct MTy {
-  GTy val;
-  GTy mac;
-};
+// struct MTy {
+//   GTy val;
+//   GTy mac;
+// };
 #pragma pack()
 
 void inline Pack(absl::Span<const PTy> val, absl::Span<const PTy> mac,

@@ -31,6 +31,8 @@ class op64 {
 
   static void Neg(absl::Span<const kFp64> in, absl::Span<kFp64> out);
 
+  static void Sqrt(absl::Span<const kFp64> in, absl::Span<kFp64> out);
+
   // fast batch inv
   static void Inv(absl::Span<const kFp64> in, absl::Span<kFp64> out);
   static void Ones(absl::Span<kFp64> out);
@@ -114,7 +116,16 @@ class op64 {
     return ret;
   }
 
+  static std::vector<kFp64> inline Sqrt(absl::Span<const kFp64> in) {
+    const size_t size = in.size();
+    std::vector<kFp64> ret(size);
+    Sqrt(in, absl::MakeSpan(ret));
+    return ret;
+  }
+
   static void inline NegInplace(absl::Span<kFp64> in) { Neg(in, in); }
+
+  static void inline SqrtInplace(absl::Span<kFp64> in) { Sqrt(in, in); }
 
   static std::vector<kFp64> inline Inv(absl::Span<const kFp64> in) {
     const size_t size = in.size();
