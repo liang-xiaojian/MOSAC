@@ -25,4 +25,18 @@ void ASTRecv(std::shared_ptr<Connection> conn,
              std::shared_ptr<ot::OtAdapter>& ot_ptr,
              absl::Span<const internal::ATy> r, absl::Span<internal::ATy> lhs,
              absl::Span<internal::ATy> rhs);
+
+void BatchASTSend(std::shared_ptr<Connection>& conn,
+                  std::shared_ptr<ot::OtAdapter>& ot_ptr, size_t total_num,
+                  size_t per_size, absl::Span<const internal::ATy> r,
+                  const std::vector<std::vector<size_t>>& perms,
+                  std::vector<std::vector<internal::ATy>>& lhs,
+                  std::vector<std::vector<internal::ATy>>& rhs);
+
+void BatchASTRecv(std::shared_ptr<Connection> conn,
+                  std::shared_ptr<ot::OtAdapter>& ot_ptr, size_t total_num,
+                  size_t per_size, absl::Span<const internal::ATy> r,
+                  std::vector<std::vector<internal::ATy>>& lhs,
+                  std::vector<std::vector<internal::ATy>>& rhs);
+
 }  // namespace mosac::shuffle

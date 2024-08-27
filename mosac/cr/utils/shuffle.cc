@@ -14,6 +14,7 @@ namespace ym = yacl::math;
 
 // fixed key
 namespace {
+// constexpr size_t kStep = 16;
 const std::array<yc::AES_KEY, 12> kPrfKey = {
     yc::AES_set_encrypt_key(0),  yc::AES_set_encrypt_key(1),
     yc::AES_set_encrypt_key(2),  yc::AES_set_encrypt_key(3),
@@ -213,16 +214,18 @@ void ShuffleRecv(std::shared_ptr<Connection> conn,
   // ---- consistency check ----
 }
 
-void ASTSend(std::shared_ptr<Connection>& conn,
-             std::shared_ptr<ot::OtAdapter>& ot_ptr,
-             absl::Span<const size_t> perm, absl::Span<const internal::ATy> r,
-             absl::Span<internal::ATy> lhs, absl::Span<internal::ATy> rhs) {
-  YACL_ENFORCE(ot_ptr->IsSender() == false);
-
+std::pair<std::vector<uint128_t>, std::vector<uint128_t>> ASTSend_internal(
+    std::shared_ptr<Connection>& conn, yc::OtRecvStore& ot_store,
+    absl::Span<const size_t> perm, absl::Span<const internal::ATy> r,
+    absl::Span<internal::ATy> lhs, absl::Span<internal::ATy> rhs) {
   const size_t num = perm.size();
+  const size_t ot_num = ym::Log2Ceil(num);
+  const size_t required_ot = num * ot_num;
+
   YACL_ENFORCE(r.size() == num);
   YACL_ENFORCE(lhs.size() == num);
   YACL_ENFORCE(rhs.size() == num);
+  YACL_ENFORCE(ot_store.Size() == required_ot);
 
   const size_t repeat = 2;
   const size_t full_size = num * repeat;
@@ -240,24 +243,6 @@ void ASTSend(std::shared_ptr<Connection>& conn,
   std::vector<uint128_t> check_a(num, 0);
   std::vector<uint128_t> check_b(num, 0);
 
-  const size_t ot_num = ym::Log2Ceil(num);
-  const size_t required_ot = num * ot_num;
-
-  // yacl::dynamic_bitset<uint128_t> choices(required_ot);
-
-  yacl::dynamic_bitset<uint128_t> choices;
-  for (size_t i = 0; i < num; ++i) {
-    yacl::dynamic_bitset<uint128_t> tmp_choices;
-    tmp_choices.append(perm[i]);
-    tmp_choices.resize(ot_num);
-    choices.append(tmp_choices);
-  }
-
-  YACL_ENFORCE(choices.size() == required_ot);
-
-  std::vector<uint128_t> ot_buff(required_ot);
-  ot_ptr->recv_cot(absl::MakeSpan(ot_buff), choices);
-  auto ot_store = yc::MakeOtRecvStore(choices, ot_buff);
   for (size_t i = 0; i < num; ++i) {
     auto ot_recv = ot_store.NextSlice(ot_num);
     yc::GywzOtExtRecv_fixed_index(conn, ot_recv, num,
@@ -288,13 +273,33 @@ void ASTSend(std::shared_ptr<Connection>& conn,
     }
   }
 
-  // for (size_t _ = 0; _ < repeat; ++_) {
-  //   const size_t offset = _ * num;
-  //   for (size_t i = 0; i < num; ++i) {
-  //     delta[offset + i] = a[offset + perm[i]] - b[offset + i];
-  //   }
-  // }
+  auto recv_buff = conn->Recv(conn->NextRank(), "shuffle: r_sub_b");
+  YACL_ENFORCE(recv_buff.size() ==
+               static_cast<int>(full_size * sizeof(internal::PTy)));
+  auto r_sub_b = absl::MakeSpan(recv_buff.data<internal::PTy>(), full_size);
 
+  internal::op::AddInplace(r_sub_b.subspan(0, num), absl::MakeConstSpan(r_val));
+  internal::op::AddInplace(r_sub_b.subspan(num, num),
+                           absl::MakeConstSpan(r_mac));
+
+  for (size_t i = 0; i < num; ++i) {
+    a[perm[i]] = r_sub_b[i] + b[i] - a[perm[i]];
+    a[perm[i] + num] = r_sub_b[i + num] + b[i + num] - a[perm[i] + num];
+  }
+
+  internal::Pack(absl::MakeConstSpan(r_sub_b).subspan(0, num),
+                 absl::MakeConstSpan(r_sub_b).subspan(num, num), lhs);
+  internal::Pack(absl::MakeConstSpan(a).subspan(0, num),
+                 absl::MakeConstSpan(a).subspan(num, num), rhs);
+
+  return std::make_pair(std::move(check_a), std::move(check_b));
+}
+
+bool ASTSend_check(std::shared_ptr<Connection>& conn,
+                   absl::Span<const size_t> perm,
+                   std::vector<uint128_t>& check_a,
+                   std::vector<uint128_t>& check_b) {
+  const size_t num = check_a.size();
   // ---- consistency check ----
   auto buf = conn->Recv(conn->NextRank(), "shuffle: consistency check");
   YACL_ENFORCE(static_cast<uint64_t>(buf.size()) == num * sizeof(uint128_t));
@@ -312,38 +317,103 @@ void ASTSend(std::shared_ptr<Connection>& conn,
   YACL_ENFORCE(yacl::ByteContainerView(hash_value) ==
                yacl::ByteContainerView(remote_hash_value));
   // ---- consistency check ----
-
-  auto recv_buff = conn->Recv(conn->NextRank(), "shuffle: r_sub_b");
-  YACL_ENFORCE(recv_buff.size() ==
-               static_cast<int>(full_size * sizeof(internal::PTy)));
-  auto r_sub_b = absl::MakeSpan(recv_buff.data<internal::PTy>(), full_size);
-
-  internal::op::AddInplace(r_sub_b.subspan(0, num), absl::MakeConstSpan(r_val));
-  internal::op::AddInplace(r_sub_b.subspan(num, num),
-                           absl::MakeConstSpan(r_mac));
-
-  for (size_t i = 0; i < num; ++i) {
-    a[perm[i]] = r_sub_b[i] + b[i] - a[perm[i]];
-    a[perm[i] + num] = r_sub_b[i + num] + b[i + num] - a[perm[i] + num];
-  }
-
-  // internal::op::AddInplace(r_sub_b, absl::MakeConstSpan(b));
-
-  internal::Pack(absl::MakeConstSpan(r_sub_b).subspan(0, num),
-                 absl::MakeConstSpan(r_sub_b).subspan(num, num), lhs);
-  internal::Pack(absl::MakeConstSpan(a).subspan(0, num),
-                 absl::MakeConstSpan(a).subspan(num, num), rhs);
+  return true;
 }
 
-void ASTRecv(std::shared_ptr<Connection> conn,
-             std::shared_ptr<ot::OtAdapter>& ot_ptr,
-             absl::Span<const internal::ATy> r, absl::Span<internal::ATy> lhs,
-             absl::Span<internal::ATy> rhs) {
-  YACL_ENFORCE(ot_ptr->IsSender() == true);
+bool BatchASTSend_check(std::shared_ptr<Connection>& conn,
+                        const std::vector<std::vector<size_t>>& perm,
+                        std::vector<std::vector<uint128_t>>& check_a,
+                        std::vector<std::vector<uint128_t>>& check_b) {
+  const size_t num = check_a.size();
+  YACL_ENFORCE(num == check_b.size());
+  const size_t size = check_a[0].size();
 
-  const size_t num = r.size();
+  // ---- consistency check ----
+  auto buf = conn->Recv(conn->NextRank(), "shuffle: consistency check");
+  YACL_ENFORCE(static_cast<uint64_t>(buf.size()) ==
+               num * size * sizeof(uint128_t));
+
+  auto ext_tmp_span = absl::MakeSpan(buf.data<uint128_t>(), num * size);
+  auto hasher = yc::SslHash(yc::HashAlgorithm::SM3);
+
+  for (size_t i = 0; i < num; ++i) {
+    auto tmp_span = ext_tmp_span.subspan(i * size, size);
+    std::transform(tmp_span.cbegin(), tmp_span.cend(), check_a[i].cbegin(),
+                   check_a[i].begin(), std::bit_xor<uint128_t>());
+
+    auto& _check_bi = check_b[i];
+    auto& _check_ai = check_a[i];
+    auto& _perm_i = perm[i];
+
+    for (size_t j = 0; j < size; ++j) {
+      _check_bi[j] = _check_bi[j] ^ _check_ai[_perm_i[j]];
+    }
+
+    hasher.Update(yacl::ByteContainerView(
+        check_b[i].data(), check_b[i].size() * sizeof(uint128_t)));
+  }
+
+  auto hash_value = hasher.CumulativeHash();
+  // auto hash_value = yacl::crypto::Sm3(yacl::ByteContainerView(
+  //     check_b.data(), check_b.size() * sizeof(uint128_t)));
+  auto remote_hash_value =
+      conn->ExchangeWithCommit(yacl::ByteContainerView(hash_value));
+
+  YACL_ENFORCE(yacl::ByteContainerView(hash_value) ==
+               yacl::ByteContainerView(remote_hash_value));
+  // ---- consistency check ----
+  return true;
+}
+
+void ASTSend(std::shared_ptr<Connection>& conn,
+             std::shared_ptr<ot::OtAdapter>& ot_ptr,
+             absl::Span<const size_t> perm, absl::Span<const internal::ATy> r,
+             absl::Span<internal::ATy> lhs, absl::Span<internal::ATy> rhs) {
+  YACL_ENFORCE(ot_ptr->IsSender() == false);
+
+  const size_t num = perm.size();
+  const size_t ot_num = ym::Log2Ceil(num);
+  const size_t required_ot = num * ot_num;
+
+  YACL_ENFORCE(r.size() == num);
   YACL_ENFORCE(lhs.size() == num);
   YACL_ENFORCE(rhs.size() == num);
+
+  yacl::dynamic_bitset<uint128_t> choices;
+  for (size_t i = 0; i < num; ++i) {
+    yacl::dynamic_bitset<uint128_t> tmp_choices;
+    tmp_choices.append(perm[i]);
+    tmp_choices.resize(ot_num);
+    choices.append(tmp_choices);
+  }
+
+  YACL_ENFORCE(choices.size() == required_ot);
+
+  std::vector<uint128_t> ot_buff(required_ot);
+  ot_ptr->recv_cot(absl::MakeSpan(ot_buff), choices);
+  auto ot_store = yc::MakeOtRecvStore(choices, ot_buff);
+
+  auto [check_a, check_b] = ASTSend_internal(conn, ot_store, perm, r, lhs, rhs);
+  // auto flag = ASTSend_check(conn, perm, check_a, check_b);
+  std::vector<std::vector<uint128_t>> check_aa(1, check_a);
+  std::vector<std::vector<uint128_t>> check_bb(1, check_b);
+  std::vector<std::vector<size_t>> permm(1, std::vector<size_t>(num, 0));
+  std::copy(perm.begin(), perm.end(), permm[0].begin());
+  auto flag = BatchASTSend_check(conn, permm, check_aa, check_bb);
+  YACL_ENFORCE(flag == true);
+}
+
+std::pair<std::vector<uint128_t>, std::vector<uint128_t>> ASTRecv_internal(
+    std::shared_ptr<Connection> conn, yc::OtSendStore& ot_store,
+    absl::Span<const internal::ATy> r, absl::Span<internal::ATy> lhs,
+    absl::Span<internal::ATy> rhs) {
+  const size_t num = r.size();
+  const size_t ot_num = ym::Log2Ceil(num);
+  const size_t required_ot = num * ot_num;
+
+  YACL_ENFORCE(lhs.size() == num);
+  YACL_ENFORCE(rhs.size() == num);
+  YACL_ENFORCE(ot_store.Size() == required_ot);
 
   const size_t repeat = 2;
   const size_t full_size = num * repeat;
@@ -360,11 +430,7 @@ void ASTRecv(std::shared_ptr<Connection> conn,
   std::vector<uint128_t> check_a(num, 0);
   std::vector<uint128_t> check_b(num, 0);
 
-  const size_t ot_num = ym::Log2Ceil(num);
-  const size_t required_ot = num * ot_num;
   std::vector<uint128_t> ot_buff(required_ot);
-  ot_ptr->send_cot(absl::MakeSpan(ot_buff));
-  auto ot_store = yc::MakeCompactOtSendStore(ot_buff, ot_ptr->GetDelta());
 
   for (size_t i = 0; i < num; ++i) {
     auto ot_send = ot_store.NextSlice(ot_num);
@@ -390,20 +456,6 @@ void ASTRecv(std::shared_ptr<Connection> conn,
                       internal::PTy(0), internal::PTy::Add);
     }
   }
-  // ---- consistency check ----
-  conn->SendAsync(conn->NextRank(),
-                  yacl::ByteContainerView(check_a.data(),
-                                          check_a.size() * sizeof(uint128_t)),
-                  "shuffle: consistency check");
-
-  auto hash_value = yacl::crypto::Sm3(yacl::ByteContainerView(
-      check_b.data(), check_b.size() * sizeof(uint128_t)));
-  auto remote_hash_value =
-      conn->ExchangeWithCommit(yacl::ByteContainerView(hash_value));
-
-  YACL_ENFORCE(yacl::ByteContainerView(hash_value) ==
-               yacl::ByteContainerView(remote_hash_value));
-  // ---- consistency check ----
 
   std::vector<internal::PTy> r_sub_b(full_size, internal::PTy(0));
 
@@ -422,6 +474,182 @@ void ASTRecv(std::shared_ptr<Connection> conn,
                  absl::MakeConstSpan(b).subspan(num, num), absl::MakeSpan(lhs));
   internal::Pack(absl::MakeConstSpan(a).subspan(0, num),
                  absl::MakeConstSpan(a).subspan(num, num), absl::MakeSpan(rhs));
+
+  return std::make_pair(std::move(check_a), std::move(check_b));
+}
+
+bool BatchASTRecv_check(std::shared_ptr<Connection>& conn,
+                        std::vector<std::vector<uint128_t>>& check_a,
+                        std::vector<std::vector<uint128_t>>& check_b) {
+  const auto num = check_a.size();
+  YACL_ENFORCE(num == check_b.size());
+  const auto size = check_a[0].size();
+
+  std::vector<uint128_t> check_ext_a(num * size);
+  auto hasher = yc::SslHash(yc::HashAlgorithm::SM3);
+
+  for (size_t i = 0; i < num; ++i) {
+    std::copy(check_a[i].begin(), check_a[i].end(),
+              check_ext_a.begin() + i * size);
+    hasher.Update(yacl::ByteContainerView(
+        check_b[i].data(), check_b[i].size() * sizeof(uint128_t)));
+  }
+
+  // ---- consistency check ----
+  conn->SendAsync(
+      conn->NextRank(),
+      yacl::ByteContainerView(check_ext_a.data(),
+                              check_ext_a.size() * sizeof(uint128_t)),
+      "shuffle: consistency check");
+
+  auto hash_value = hasher.CumulativeHash();
+  // auto hash_value = yacl::crypto::Sm3(yacl::ByteContainerView(
+  //     check_b.data(), check_b.size() * sizeof(uint128_t)));
+  auto remote_hash_value =
+      conn->ExchangeWithCommit(yacl::ByteContainerView(hash_value));
+
+  YACL_ENFORCE(yacl::ByteContainerView(hash_value) ==
+               yacl::ByteContainerView(remote_hash_value));
+  // ---- consistency check ----
+  return true;
+}
+
+bool ASTRecv_check(std::shared_ptr<Connection>& conn,
+                   const std::vector<uint128_t>& check_a,
+                   const std::vector<uint128_t>& check_b) {
+  // ---- consistency check ----
+  conn->SendAsync(conn->NextRank(),
+                  yacl::ByteContainerView(check_a.data(),
+                                          check_a.size() * sizeof(uint128_t)),
+                  "shuffle: consistency check");
+
+  auto hash_value = yacl::crypto::Sm3(yacl::ByteContainerView(
+      check_b.data(), check_b.size() * sizeof(uint128_t)));
+  auto remote_hash_value =
+      conn->ExchangeWithCommit(yacl::ByteContainerView(hash_value));
+
+  YACL_ENFORCE(yacl::ByteContainerView(hash_value) ==
+               yacl::ByteContainerView(remote_hash_value));
+  // ---- consistency check ----
+  return true;
+}
+
+void ASTRecv(std::shared_ptr<Connection> conn,
+             std::shared_ptr<ot::OtAdapter>& ot_ptr,
+             absl::Span<const internal::ATy> r, absl::Span<internal::ATy> lhs,
+             absl::Span<internal::ATy> rhs) {
+  YACL_ENFORCE(ot_ptr->IsSender() == true);
+
+  const size_t num = r.size();
+  const size_t ot_num = ym::Log2Ceil(num);
+  const size_t required_ot = num * ot_num;
+
+  YACL_ENFORCE(lhs.size() == num);
+  YACL_ENFORCE(rhs.size() == num);
+
+  std::vector<uint128_t> ot_buff(required_ot);
+  ot_ptr->send_cot(absl::MakeSpan(ot_buff));
+  auto ot_store = yc::MakeCompactOtSendStore(ot_buff, ot_ptr->GetDelta());
+
+  auto [check_a, check_b] = ASTRecv_internal(conn, ot_store, r, lhs, rhs);
+  // auto flag = ASTRecv_check(conn, check_a, check_b);
+  std::vector<std::vector<uint128_t>> check_aa(1, check_a);
+  std::vector<std::vector<uint128_t>> check_bb(1, check_b);
+  auto flag = BatchASTRecv_check(conn, check_aa, check_bb);
+  YACL_ENFORCE(flag == true);
+}
+
+void BatchASTSend(std::shared_ptr<Connection>& conn,
+                  std::shared_ptr<ot::OtAdapter>& ot_ptr, size_t total_num,
+                  size_t per_size, absl::Span<const internal::ATy> r,
+                  const std::vector<std::vector<size_t>>& perms,
+                  std::vector<std::vector<internal::ATy>>& lhs,
+                  std::vector<std::vector<internal::ATy>>& rhs) {
+  lhs.clear();
+  rhs.clear();
+
+  YACL_ENFORCE(perms.size() == total_num);
+  YACL_ENFORCE(perms[0].size() == per_size);
+  YACL_ENFORCE(r.size() == total_num * per_size);
+
+  yacl::dynamic_bitset<uint128_t> choices;
+
+  const auto ot_num = ym::Log2Ceil(per_size);
+  const auto required_ot = per_size * ot_num;
+  for (size_t i = 0; i < total_num; ++i) {
+    auto& perm = perms[i];
+    for (size_t j = 0; j < per_size; ++j) {
+      yacl::dynamic_bitset<uint128_t> tmp_choices;
+      tmp_choices.append(perm[j]);
+      tmp_choices.resize(ot_num);
+      choices.append(tmp_choices);
+    }
+  }
+
+  YACL_ENFORCE(choices.size() == total_num * required_ot);
+
+  std::vector<uint128_t> ot_buff(required_ot * total_num);
+  ot_ptr->recv_cot(absl::MakeSpan(ot_buff), choices);
+  auto ot_store = yc::MakeOtRecvStore(choices, ot_buff);
+
+  std::vector<std::vector<uint128_t>> check_vec_a;
+  std::vector<std::vector<uint128_t>> check_vec_b;
+
+  for (size_t i = 0; i < total_num; ++i) {
+    auto& perm = perms[i];
+    std::vector<internal::ATy> tmp_lhs(per_size);
+    std::vector<internal::ATy> tmp_rhs(per_size);
+    auto sub_r = r.subspan(i * per_size, per_size);
+    auto ot_sub_store = ot_store.NextSlice(required_ot);
+
+    auto [check_a, check_b] =
+        ASTSend_internal(conn, ot_sub_store, perm, sub_r,
+                         absl::MakeSpan(tmp_lhs), absl::MakeSpan(tmp_rhs));
+
+    lhs.push_back(std::move(tmp_lhs));
+    rhs.push_back(std::move(tmp_rhs));
+    check_vec_a.push_back(std::move(check_a));
+    check_vec_b.push_back(std::move(check_b));
+  }
+  auto flag = BatchASTSend_check(conn, perms, check_vec_a, check_vec_b);
+  YACL_ENFORCE(flag == true);
+}
+
+void BatchASTRecv(std::shared_ptr<Connection> conn,
+                  std::shared_ptr<ot::OtAdapter>& ot_ptr, size_t total_num,
+                  size_t per_size, absl::Span<const internal::ATy> r,
+                  std::vector<std::vector<internal::ATy>>& lhs,
+                  std::vector<std::vector<internal::ATy>>& rhs) {
+  lhs.clear();
+  rhs.clear();
+
+  YACL_ENFORCE(r.size() == total_num * per_size);
+
+  const auto required_ot = per_size * ym::Log2Ceil(per_size);
+
+  std::vector<uint128_t> ot_buff(required_ot * total_num);
+  ot_ptr->send_cot(absl::MakeSpan(ot_buff));
+  auto ot_store = yc::MakeCompactOtSendStore(ot_buff, ot_ptr->GetDelta());
+
+  std::vector<std::vector<uint128_t>> check_vec_a;
+  std::vector<std::vector<uint128_t>> check_vec_b;
+  for (size_t i = 0; i < total_num; ++i) {
+    std::vector<internal::ATy> tmp_lhs(per_size);
+    std::vector<internal::ATy> tmp_rhs(per_size);
+    auto ot_sub_store = ot_store.NextSlice(required_ot);
+    auto sub_r = r.subspan(i * per_size, per_size);
+
+    auto [check_a, check_b] =
+        ASTRecv_internal(conn, ot_sub_store, sub_r, absl::MakeSpan(tmp_lhs),
+                         absl::MakeSpan(tmp_rhs));
+
+    lhs.push_back(std::move(tmp_lhs));
+    rhs.push_back(std::move(tmp_rhs));
+    check_vec_a.push_back(std::move(check_a));
+    check_vec_b.push_back(std::move(check_b));
+  }
+  auto flag = BatchASTRecv_check(conn, check_vec_a, check_vec_b);
+  YACL_ENFORCE(flag == true);
 }
 
 }  // namespace mosac::shuffle

@@ -114,6 +114,12 @@ class TrueCorrelation : public Correlation {
   void ASTGet(absl::Span<internal::ATy> a,
               absl::Span<internal::ATy> b) override;
 
+  std::vector<size_t> ASTSet_2k(size_t T, absl::Span<internal::ATy> a,
+                                absl::Span<internal::ATy> b) override;
+
+  void ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
+                 absl::Span<internal::ATy> b) override;
+
   // entry
   internal::ATy NMul(absl::Span<internal::ATy> r) override;
 
@@ -140,6 +146,27 @@ class TrueCorrelation : public Correlation {
   void BeaverTripleWithChosenB(absl::Span<internal::ATy> a,
                                absl::Span<const internal::ATy> b,
                                absl::Span<internal::ATy> c);
+
+  std::vector<size_t> ASTSet_basic_2k(absl::Span<internal::ATy> a,
+                                      absl::Span<internal::ATy> b);
+
+  void ASTGet_basic_2k(absl::Span<internal::ATy> a,
+                       absl::Span<internal::ATy> b);
+
+  std::vector<std::vector<size_t>> ASTSet_batch_basic_2k(
+      size_t num, size_t T, std::vector<std::vector<internal::ATy>>& vec_a,
+      std::vector<std::vector<internal::ATy>>& vec_b);
+
+  void ASTGet_batch_basic_2k(size_t num, size_t T,
+                             std::vector<std::vector<internal::ATy>>& vec_a,
+                             std::vector<std::vector<internal::ATy>>& vec_b);
+
+  void compose_vec_2k(size_t i,
+                      const std::vector<std::vector<internal::ATy>>& vecs,
+                      absl::Span<internal::ATy> out);
+
+  void compose_perm_2k(size_t i, const std::vector<std::vector<size_t>>& perms,
+                       absl::Span<size_t> out);
 
   // TODO:
   // internal::PTy SingleOpenAndCheck(const internal::ATy& in);

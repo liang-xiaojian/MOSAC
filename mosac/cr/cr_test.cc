@@ -140,9 +140,50 @@ TEST(CrTest, ShuffleWork) {
   }
 }
 
+TEST(CrTest, NMulTest) {
+  auto context = TestParam::GetContext();
+  const size_t num = 1000;
+
+  auto rank0 = std::async([&] {
+    auto cr = context[0]->GetState<Correlation>();
+    auto [r, mul_inv] = cr->NMul(num);
+    return std::make_tuple(r, mul_inv);
+  });
+  auto rank1 = std::async([&] {
+    auto cr = context[1]->GetState<Correlation>();
+    auto [r, mul_inv] = cr->NMul(num);
+    return std::make_tuple(r, mul_inv);
+  });
+
+  auto [r0, mul_inv0] = rank0.get();
+  auto [r1, mul_inv1] = rank1.get();
+
+  auto r0_val = internal::ExtractVal(r0);
+  auto r1_val = internal::ExtractVal(r1);
+  auto r = internal::op::Add(absl::MakeConstSpan(r0_val),
+                             absl::MakeConstSpan(r1_val));
+
+  auto mul =
+      std::reduce(r.begin(), r.end(), internal::PTy(1), internal::PTy::Mul);
+  auto mul_inv = internal::PTy::Add(mul_inv0.val, mul_inv1.val);
+
+  EXPECT_EQ(internal::PTy(1), internal::PTy::Mul(mul, mul_inv));
+
+  auto r0_mac = internal::ExtractMac(r0);
+  auto r1_mac = internal::ExtractMac(r1);
+  auto r_mac = internal::op::Add(absl::MakeConstSpan(r0_mac),
+                                 absl::MakeConstSpan(r1_mac));
+  auto key = context[0]->GetState<Correlation>()->GetKey() +
+             context[1]->GetState<Correlation>()->GetKey();
+
+  for (size_t i = 0; i < num; ++i) {
+    EXPECT_EQ(key * r[i], r_mac[i]);
+  }
+}
+
 TEST(CrTest, ASTWork) {
   auto context = TestParam::GetContext();
-  const size_t num = 100;
+  const size_t num = 10;
 
   auto rank0 = std::async([&] {
     auto cr = context[0]->GetState<Correlation>();
@@ -196,44 +237,64 @@ TEST(CrTest, ASTWork) {
   }
 }
 
-TEST(CrTest, NMulTest) {
+TEST(CrTest, ASTWork_2k) {
   auto context = TestParam::GetContext();
-  const size_t num = 1000;
+  const size_t num = 1 << 8;
+  const size_t T = 1 << 1;
 
   auto rank0 = std::async([&] {
     auto cr = context[0]->GetState<Correlation>();
-    auto [r, mul_inv] = cr->NMul(num);
-    return std::make_tuple(r, mul_inv);
+    auto [perm, a, b] = cr->ASTSet_2k(T, num);
+    return std::make_tuple(perm, a, b);
   });
   auto rank1 = std::async([&] {
     auto cr = context[1]->GetState<Correlation>();
-    auto [r, mul_inv] = cr->NMul(num);
-    return std::make_tuple(r, mul_inv);
+    auto [a, b] = cr->ASTGet_2k(T, num);
+    return std::make_tuple(a, b);
   });
 
-  auto [r0, mul_inv0] = rank0.get();
-  auto [r1, mul_inv1] = rank1.get();
+  auto [perm, a0, b0] = rank0.get();
+  auto [a1, b1] = rank1.get();
 
-  auto r0_val = internal::ExtractVal(r0);
-  auto r1_val = internal::ExtractVal(r1);
-  auto r = internal::op::Add(absl::MakeConstSpan(r0_val),
-                             absl::MakeConstSpan(r1_val));
+  for (const auto& e : perm) {
+    SPDLOG_INFO("{}", e);
+  }
 
-  auto mul =
-      std::reduce(r.begin(), r.end(), internal::PTy(1), internal::PTy::Mul);
-  auto mul_inv = internal::PTy::Add(mul_inv0.val, mul_inv1.val);
+  auto a0_val = internal::ExtractVal(a0);
+  auto a1_val = internal::ExtractVal(a1);
+  auto b0_val = internal::ExtractVal(b0);
+  auto b1_val = internal::ExtractVal(b1);
 
-  EXPECT_EQ(internal::PTy(1), internal::PTy::Mul(mul, mul_inv));
+  auto a_val =
+      internal::op::Add(absl::MakeSpan(a0_val), absl::MakeSpan(a1_val));
+  auto b_val =
+      internal::op::Add(absl::MakeSpan(b0_val), absl::MakeSpan(b1_val));
 
-  auto r0_mac = internal::ExtractMac(r0);
-  auto r1_mac = internal::ExtractMac(r1);
-  auto r_mac = internal::op::Add(absl::MakeConstSpan(r0_mac),
-                                 absl::MakeConstSpan(r1_mac));
+  for (size_t i = 0; i < num; ++i) {
+    EXPECT_EQ(a_val[i], b_val[perm[i]]);
+  }
+
+  auto a0_mac = internal::ExtractMac(a0);
+  auto a1_mac = internal::ExtractMac(a1);
+  auto b0_mac = internal::ExtractMac(b0);
+  auto b1_mac = internal::ExtractMac(b1);
+
+  auto a_mac =
+      internal::op::Add(absl::MakeSpan(a0_mac), absl::MakeSpan(a1_mac));
+  auto b_mac =
+      internal::op::Add(absl::MakeSpan(b0_mac), absl::MakeSpan(b1_mac));
+
   auto key = context[0]->GetState<Correlation>()->GetKey() +
              context[1]->GetState<Correlation>()->GetKey();
 
   for (size_t i = 0; i < num; ++i) {
-    EXPECT_EQ(key * r[i], r_mac[i]);
+    EXPECT_EQ(key * a_val[i], a_mac[i]);
+    EXPECT_EQ(key * b_val[i], b_mac[i]);
+  }
+
+  sort(perm.begin(), perm.end());
+  for (size_t i = 0; i < num; ++i) {
+    EXPECT_EQ(perm[i], i);
   }
 }
 

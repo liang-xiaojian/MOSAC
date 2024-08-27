@@ -3,6 +3,7 @@
 #include "mosac/cr/utils/ot_helper.h"
 #include "mosac/ss/type.h"
 #include "mosac/utils/vec_op.h"
+#include "yacl/math/gadget.h"
 
 namespace mosac {
 
@@ -196,7 +197,7 @@ std::vector<size_t> TrueCorrelation::ASTSet(absl::Span<internal::ATy> a,
   YACL_ENFORCE(num == b.size());
   auto conn = ctx_->GetConnection();
 
-  const size_t B = 40;
+  const size_t B = 10;
   auto perm = GenPerm(num);
   std::vector<internal::ATy> rand(num);
   RandomAuth(absl::MakeSpan(rand));
@@ -259,7 +260,7 @@ void TrueCorrelation::ASTGet(absl::Span<internal::ATy> a,
   YACL_ENFORCE(num == b.size());
   auto conn = ctx_->GetConnection();
 
-  const size_t B = 40;
+  const size_t B = 10;
   std::vector<internal::ATy> rand(num);
   RandomAuth(absl::MakeSpan(rand));
   ot::OtHelper(ot_sender_, ot_receiver_).ASTRecv(conn, rand, a, b);
@@ -399,66 +400,6 @@ std::vector<internal::ATy> TrueCorrelation::Mul(
   internal::op::MulInplace(absl::MakeSpan(mac), absl::MakeConstSpan(rhs));
   return internal::Pack(absl::MakeSpan(val), absl::MakeSpan(mac));
 }
-
-// std::vector<internal::ATy> TrueCorrelation::Mul(
-//     absl::Span<const internal::ATy> lhs, absl::Span<const internal::ATy> rhs)
-//     {
-//   YACL_ENFORCE(lhs.size() == rhs.size());
-//   const size_t num = lhs.size();
-
-//   auto a = std::vector<internal::ATy>(num, {0, 0});
-//   auto b = std::vector<internal::ATy>(num, {0, 0});
-//   auto c = std::vector<internal::ATy>(num, {0, 0});
-//   BeaverTriple(absl::MakeSpan(a), absl::MakeSpan(b), absl::MakeSpan(c));
-
-//   auto u = internal::op::Sub(
-//       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(lhs.data()),
-//                           2 * num),
-//       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(a.data()),
-//                           2 * num));
-//   auto v = internal::op::Sub(
-//       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(rhs.data()),
-//                           2 * num),
-//       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(b.data()),
-//                           2 * num));
-
-//   auto u_p = OpenAndCheck(absl::MakeConstSpan(
-//       reinterpret_cast<const internal::ATy*>(u.data()), num));
-//   auto v_p = OpenAndCheck(absl::MakeConstSpan(
-//       reinterpret_cast<const internal::ATy*>(v.data()), num));
-
-//   auto xyb = Mul(lhs, absl::MakeConstSpan(v_p));
-//   auto xay = Mul(absl::MakeConstSpan(u_p), rhs);
-//   auto xayb_val =
-//       internal::op::Mul(absl::MakeConstSpan(u_p), absl::MakeConstSpan(v_p));
-//   auto xayb_mac = internal::op::ScalarMul(key_,
-//   absl::MakeConstSpan(xayb_val));
-
-//   if (ctx_->GetRank() != 0) {
-//     xayb_val = internal::op::Zeros(num);
-//   }
-
-//   auto xayb = internal::Pack(absl::MakeConstSpan(xayb_val),
-//                              absl::MakeConstSpan(xayb_mac));
-
-//   internal::op::AddInplace(
-//       absl::MakeSpan(reinterpret_cast<internal::PTy*>(c.data()), 2 * num),
-//       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(xyb.data()),
-//                           2 * num));
-
-//   internal::op::AddInplace(
-//       absl::MakeSpan(reinterpret_cast<internal::PTy*>(c.data()), 2 * num),
-//       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(xay.data()),
-//                           2 * num));
-
-//   internal::op::SubInplace(
-//       absl::MakeSpan(reinterpret_cast<internal::PTy*>(c.data()), 2 * num),
-//       absl::MakeConstSpan(reinterpret_cast<const
-//       internal::PTy*>(xayb.data()),
-//                           2 * num));
-
-//   return c;
-// }
 
 std::vector<internal::ATy> TrueCorrelation::Mul(
     absl::Span<const internal::ATy> lhs, absl::Span<const internal::ATy> rhs) {
@@ -649,6 +590,290 @@ void TrueCorrelation::BeaverTripleWithChosenB(absl::Span<internal::ATy> a,
     YACL_ENFORCE(cC[i] == aA[i], "{} : cC is {}", i, cC[i].GetVal());
   }
   // ---- consistency check ----
+}
+
+std::vector<size_t> TrueCorrelation::ASTSet_2k(size_t T,
+                                               absl::Span<internal::ATy> a,
+                                               absl::Span<internal::ATy> b) {
+  const auto num = a.size();
+  YACL_ENFORCE(a.size() == b.size());
+  YACL_ENFORCE((num & (num - 1)) == 0);  // num = 2^n
+  YACL_ENFORCE((T & (T - 1)) == 0);      // T = 2^m
+  YACL_ENFORCE(num >= T);                // num should be greater than T
+
+  const auto num_bits = yacl::math::Log2Ceil(num);
+  const auto T_bits = yacl::math::Log2Ceil(T);
+
+  // const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
+  const auto depth = 2 * (num_bits - T_bits) + 1;
+
+  std::vector<std::vector<internal::ATy>> vec_a_T;
+  std::vector<std::vector<internal::ATy>> vec_b_T;
+
+  std::vector<size_t> perm(num);
+
+  const auto T_num = num / T;
+
+  for (size_t i = 0; i < T_num; ++i) {
+    vec_a_T.push_back(std::vector<internal::ATy>(T, {0, 0}));
+    vec_b_T.push_back(std::vector<internal::ATy>(T, {0, 0}));
+  }
+
+  SPDLOG_INFO("depth {}, T_num {}, total {}", depth, T_num, depth * T_num);
+
+  for (size_t l = 0; l < depth; ++l) {
+    // std::vector<std::vector<size_t>> vec_perm_T;
+    // for (size_t i = 0; i < T_num; ++i) {
+    //   auto perm_T = ASTSet_basic_2k(absl::MakeSpan(vec_a_T[i]),
+    //                                 absl::MakeSpan(vec_b_T[i]));
+    //   vec_perm_T.push_back(std::move(perm_T));
+    // }
+    auto vec_perm_T = ASTSet_batch_basic_2k(T_num, T, vec_a_T, vec_b_T);
+
+    if (l == 0) {
+      compose_vec_2k(l, vec_a_T, absl::MakeSpan(a));
+      compose_vec_2k(l, vec_b_T, absl::MakeSpan(b));
+      compose_perm_2k(l, vec_perm_T, absl::MakeSpan(perm));
+    } else {
+      std::vector<internal::ATy> _a(num, {0, 0});
+      std::vector<internal::ATy> _b(num, {0, 0});
+      std::vector<size_t> _perm(num);
+
+      compose_vec_2k(l, vec_a_T, absl::MakeSpan(_a));
+      compose_vec_2k(l, vec_b_T, absl::MakeSpan(_b));
+      compose_perm_2k(l, vec_perm_T, absl::MakeSpan(_perm));
+
+      internal::op::SubInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()),
+                         b.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
+                         _a.size() * 2));
+      auto p = OpenAndCheck(absl::MakeConstSpan(b));
+      std::vector<internal::PTy> shuffle_p(num);
+      std::vector<size_t> shuffle_perm(num);
+      for (size_t i = 0; i < num; ++i) {
+        shuffle_p[_perm[i]] = p[i];
+        shuffle_perm[i] = _perm[perm[i]];
+      }
+
+      std::vector<internal::ATy> shuffle_p_A(num);
+      AuthSet(absl::MakeConstSpan(shuffle_p), absl::MakeSpan(shuffle_p_A));
+
+      internal::op::AddInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()),
+                         _b.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_A.data()),
+                         shuffle_p_A.size() * 2));
+      std::copy(_b.begin(), _b.end(), b.begin());
+      std::swap(perm, shuffle_perm);
+    }
+  }
+
+  return perm;
+}
+
+void TrueCorrelation::ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
+                                absl::Span<internal::ATy> b) {
+  const auto num = a.size();
+  YACL_ENFORCE(a.size() == b.size());
+  YACL_ENFORCE((num & (num - 1)) == 0);  // num = 2^n
+  YACL_ENFORCE((T & (T - 1)) == 0);      // T = 2^m
+  YACL_ENFORCE(num >= T);                // num should be greater than T
+
+  const auto num_bits = yacl::math::Log2Ceil(num);
+  const auto T_bits = yacl::math::Log2Ceil(T);
+
+  // const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
+  const auto depth = 2 * (num_bits - T_bits) + 1;
+
+  std::vector<std::vector<internal::ATy>> vec_a_T;
+  std::vector<std::vector<internal::ATy>> vec_b_T;
+
+  const auto T_num = num / T;
+
+  for (size_t i = 0; i < T_num; ++i) {
+    vec_a_T.push_back(std::vector<internal::ATy>(T, {0, 0}));
+    vec_b_T.push_back(std::vector<internal::ATy>(T, {0, 0}));
+  }
+
+  SPDLOG_INFO("depth {}, T_num {}, total {}", depth, T_num, depth * T_num);
+
+  for (size_t l = 0; l < depth; ++l) {
+    ASTGet_batch_basic_2k(T_num, T, vec_a_T, vec_b_T);
+    // for (size_t i = 0; i < T_num; ++i) {
+    //   ASTGet_basic_2k(absl::MakeSpan(vec_a_T[i]),
+    //   absl::MakeSpan(vec_b_T[i]));
+    // }
+
+    if (l == 0) {
+      compose_vec_2k(l, vec_a_T, absl::MakeSpan(a));
+      compose_vec_2k(l, vec_b_T, absl::MakeSpan(b));
+    } else {
+      std::vector<internal::ATy> _a(num, {0, 0});
+      std::vector<internal::ATy> _b(num, {0, 0});
+
+      compose_vec_2k(l, vec_a_T, absl::MakeSpan(_a));
+      compose_vec_2k(l, vec_b_T, absl::MakeSpan(_b));
+
+      internal::op::SubInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()),
+                         b.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
+                         _a.size() * 2));
+      [[maybe_unused]] auto p = OpenAndCheck(absl::MakeConstSpan(b));
+
+      std::vector<internal::ATy> shuffle_p_A(num);
+      AuthGet(absl::MakeSpan(shuffle_p_A));
+
+      internal::op::AddInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()),
+                         _b.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_A.data()),
+                         shuffle_p_A.size() * 2));
+
+      std::copy(_b.begin(), _b.end(), b.begin());
+    }
+  }
+}
+
+std::vector<size_t> TrueCorrelation::ASTSet_basic_2k(
+    absl::Span<internal::ATy> a, absl::Span<internal::ATy> b) {
+  const size_t num = a.size();
+  YACL_ENFORCE(num == b.size());
+  YACL_ENFORCE((num & (num - 1)) == 0);  // num = 2^k
+
+  auto conn = ctx_->GetConnection();
+
+  auto perm = GenPerm(num);
+  std::vector<internal::ATy> rand(num);
+  RandomAuth(absl::MakeSpan(rand));
+  ot::OtHelper(ot_sender_, ot_receiver_).ASTSend(conn, perm, rand, a, b);
+  return perm;
+}
+
+void TrueCorrelation::ASTGet_basic_2k(absl::Span<internal::ATy> a,
+                                      absl::Span<internal::ATy> b) {
+  const size_t num = a.size();
+  YACL_ENFORCE(num == b.size());
+  YACL_ENFORCE((num & (num - 1)) == 0);  // num = 2^k
+
+  auto conn = ctx_->GetConnection();
+
+  std::vector<internal::ATy> rand(num);
+  RandomAuth(absl::MakeSpan(rand));
+  ot::OtHelper(ot_sender_, ot_receiver_).ASTRecv(conn, rand, a, b);
+}
+
+std::vector<std::vector<size_t>> TrueCorrelation::ASTSet_batch_basic_2k(
+    size_t num, size_t T, std::vector<std::vector<internal::ATy>>& vec_a,
+    std::vector<std::vector<internal::ATy>>& vec_b) {
+  YACL_ENFORCE((num & (num - 1)) == 0);
+  YACL_ENFORCE((T & (T - 1)) == 0);
+
+  SPDLOG_INFO("T is {}, num is {}", T, num);
+
+  std::vector<std::vector<size_t>> perms;
+  for (size_t i = 0; i < num; ++i) {
+    auto tmp_perm = GenPerm(T);
+    perms.push_back(std::move(tmp_perm));
+  }
+
+  auto conn = ctx_->GetConnection();
+
+  std::vector<internal::ATy> rand(num * T);
+  RandomAuth(absl::MakeSpan(rand));
+
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .BatchASTSend(conn, num, T, rand, perms, vec_a, vec_b);
+  return perms;
+}
+
+void TrueCorrelation::ASTGet_batch_basic_2k(
+    size_t num, size_t T, std::vector<std::vector<internal::ATy>>& vec_a,
+    std::vector<std::vector<internal::ATy>>& vec_b) {
+  YACL_ENFORCE((num & (num - 1)) == 0);
+  YACL_ENFORCE((T & (T - 1)) == 0);
+
+  auto conn = ctx_->GetConnection();
+
+  std::vector<internal::ATy> rand(num * T);
+  RandomAuth(absl::MakeSpan(rand));
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .BatchASTRecv(conn, num, T, rand, vec_a, vec_b);
+}
+
+void TrueCorrelation::compose_vec_2k(
+    size_t i, const std::vector<std::vector<internal::ATy>>& ins,
+    absl::Span<internal::ATy> out) {
+  const auto num = out.size();
+
+  const auto T_num = ins.size();
+  const auto T = ins[0].size();
+
+  YACL_ENFORCE(T * T_num == num);
+
+  const auto num_bits = yacl::math::Log2Ceil(num);
+  const auto T_bits = yacl::math::Log2Ceil(T);
+
+  // const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
+  const auto depth = 2 * (num_bits - T_bits) + 1;
+
+  if (2 * i > depth) {
+    i = depth - i - 1;
+  }
+
+  const auto step = 1 << i;
+
+  uint32_t offset = 0;
+  for (size_t i = 0; i < T_num; ++i) {
+    for (size_t j = 0; j < T; ++j) {
+      out[offset + j * step] = ins[i][j];
+    }
+
+    offset += 1;
+    int rest = offset % (T * step);
+    if (rest == step) {
+      offset += step * (T - 1);
+    }
+  }
+}
+
+void TrueCorrelation::compose_perm_2k(
+    size_t i, const std::vector<std::vector<size_t>>& perms,
+    absl::Span<size_t> out) {
+  const auto num = out.size();
+
+  const auto T_num = perms.size();
+  const auto T = perms[0].size();
+
+  YACL_ENFORCE(T * T_num == num);
+
+  const auto num_bits = yacl::math::Log2Ceil(num);
+  const auto T_bits = yacl::math::Log2Ceil(T);
+
+  // const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
+  const auto depth = 2 * (num_bits - T_bits) + 1;
+
+  if (2 * i > depth) {
+    i = depth - i - 1;
+  }
+
+  const auto step = 1 << i;
+
+  SPDLOG_INFO("step is {}", step);
+
+  uint32_t offset = 0;
+  for (size_t i = 0; i < T_num; ++i) {
+    for (size_t j = 0; j < T; ++j) {
+      out[offset + j * step] = offset + perms[i][j] * step;
+    }
+
+    offset += 1;
+    int rest = offset % (T * step);
+    if (rest == step) {
+      offset += step * (T - 1);
+    }
+  }
 }
 
 }  // namespace mosac

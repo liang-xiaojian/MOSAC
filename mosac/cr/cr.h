@@ -148,6 +148,12 @@ class Correlation : public State {
                       absl::Span<internal::ATy> b) = 0;
   virtual internal::ATy NMul(absl::Span<internal::ATy> r) = 0;
 
+  virtual std::vector<size_t> ASTSet_2k(size_t T, absl::Span<internal::ATy> a,
+                                        absl::Span<internal::ATy> b) = 0;
+
+  virtual void ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
+                         absl::Span<internal::ATy> b) = 0;
+
   // interface
   BeaverTy BeaverTriple(size_t num);
   AuthTy RandomSet(size_t num);
@@ -158,6 +164,9 @@ class Correlation : public State {
   ASTSTy ASTSet(size_t num);
   ASTGTy ASTGet(size_t num);
   NMulTy NMul(size_t num);
+
+  ASTSTy ASTSet_2k(size_t T, size_t num);
+  ASTGTy ASTGet_2k(size_t T, size_t num);
 
   // ------------ cache -------------
  private:

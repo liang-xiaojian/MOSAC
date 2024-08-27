@@ -101,6 +101,20 @@ ASTGTy Correlation::ASTGet(size_t num) {
   return ASTGTy(std::move(a), std::move(b));
 }
 
+ASTSTy Correlation::ASTSet_2k(size_t T, size_t num) {
+  std::vector<internal::ATy> a(num);
+  std::vector<internal::ATy> b(num);
+  std::vector<size_t> perm = ASTSet_2k(T, absl::MakeSpan(a), absl::MakeSpan(b));
+  return ASTSTy(std::move(perm), std::move(a), std::move(b));
+}
+
+ASTGTy Correlation::ASTGet_2k(size_t T, size_t num) {
+  std::vector<internal::ATy> a(num);
+  std::vector<internal::ATy> b(num);
+  ASTGet_2k(T, absl::MakeSpan(a), absl::MakeSpan(b));
+  return ASTGTy(std::move(a), std::move(b));
+}
+
 NMulTy Correlation::NMul(size_t num) {
   if (cache_ != nullptr && cache_->NMulCount(num)) {
     return cache_->NMul(num);

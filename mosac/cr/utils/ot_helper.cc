@@ -84,7 +84,7 @@ void OtHelper::MulPPRecv(std::shared_ptr<Connection> conn,
 
   auto recv_buf = conn->Recv(conn->NextRank(), "Beaver:MulPP");
   auto recv_span = absl::MakeConstSpan(
-      reinterpret_cast<internal::PTy *>(recv_buf.data()), ot_num);
+      reinterpret_cast<internal::PTy*>(recv_buf.data()), ot_num);
 
   for (size_t i = 0; i < num; ++i) {
     c[i] = internal::PTy::Zero();
@@ -222,7 +222,7 @@ void OtHelper::MulPPExtendRecv(std::shared_ptr<Connection> conn,
 
   auto recv_buf = conn->Recv(conn->NextRank(), "Beaver:MulPP");
   auto recv_span = absl::MakeConstSpan(
-      reinterpret_cast<internal::PTy *>(recv_buf.data()), ot_num);
+      reinterpret_cast<internal::PTy*>(recv_buf.data()), ot_num);
 
   auto ext_c = internal::op::Zeros(ext_num);
   for (size_t i = 0; i < ext_num; ++i) {
@@ -407,7 +407,7 @@ void OtHelper::MulPPExtendRecvWithChosenB(std::shared_ptr<Connection> conn,
 
   auto recv_buf = conn->Recv(conn->NextRank(), "Beaver:MulPP");
   auto recv_span = absl::MakeConstSpan(
-      reinterpret_cast<internal::PTy *>(recv_buf.data()), ot_num);
+      reinterpret_cast<internal::PTy*>(recv_buf.data()), ot_num);
 
   auto ext_c = internal::op::Zeros(ext_num);
   for (size_t i = 0; i < ext_num; ++i) {
@@ -559,7 +559,7 @@ void OtHelper::BaseVoleSend(std::shared_ptr<Connection> conn,
   extra_c = extra_c + internal::op::InPro(absl::MakeSpan(coef), c);
   auto buf = conn->Recv(conn->NextRank(), "MalBaseVole");
   auto extra_ab =
-      absl::MakeSpan(reinterpret_cast<internal::PTy *>(buf.data()), 2);
+      absl::MakeSpan(reinterpret_cast<internal::PTy*>(buf.data()), 2);
   SPDLOG_INFO("{} v.s. {}", (extra_ab[0] * delta + extra_ab[1]).GetVal(),
               extra_c.GetVal());
   YACL_ENFORCE(extra_ab[0] * delta + extra_ab[1] == extra_c);
@@ -587,7 +587,7 @@ void OtHelper::BaseVoleRecv(std::shared_ptr<Connection> conn,
 
   auto recv_buf = conn->Recv(conn->NextRank(), "Beaver:BaseVole");
   auto recv_span = absl::MakeConstSpan(
-      reinterpret_cast<internal::PTy *>(recv_buf.data()), ot_num);
+      reinterpret_cast<internal::PTy*>(recv_buf.data()), ot_num);
 
   for (size_t i = 0; i < num; ++i) {
     b[i] = internal::PTy::Zero();
@@ -659,6 +659,22 @@ void OtHelper::ASTRecv(std::shared_ptr<Connection> conn,
                        absl::Span<internal::ATy> a,
                        absl::Span<internal::ATy> b) {
   shuffle::ASTRecv(conn, ot_sender_, r, a, b);
+}
+
+void OtHelper::BatchASTSend(std::shared_ptr<Connection>& conn, size_t total_num,
+                            size_t per_size, absl::Span<const internal::ATy> r,
+                            const std::vector<std::vector<size_t>>& perms,
+                            std::vector<std::vector<internal::ATy>>& lhs,
+                            std::vector<std::vector<internal::ATy>>& rhs) {
+  shuffle::BatchASTSend(conn, ot_receiver_, total_num, per_size, r, perms, lhs,
+                        rhs);
+}
+
+void OtHelper::BatchASTRecv(std::shared_ptr<Connection> conn, size_t total_num,
+                            size_t per_size, absl::Span<const internal::ATy> r,
+                            std::vector<std::vector<internal::ATy>>& lhs,
+                            std::vector<std::vector<internal::ATy>>& rhs) {
+  shuffle::BatchASTRecv(conn, ot_sender_, total_num, per_size, r, lhs, rhs);
 }
 
 }  // namespace mosac::ot
