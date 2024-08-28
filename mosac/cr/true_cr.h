@@ -168,6 +168,20 @@ class TrueCorrelation : public Correlation {
   void compose_perm_2k(size_t i, const std::vector<std::vector<size_t>>& perms,
                        absl::Span<size_t> out);
 
+  void ASTSet_merge(size_t in_num, size_t out_num,
+                    std::vector<std::vector<size_t>>& in_perms,
+                    std::vector<std::vector<internal::ATy>>& in_vec_a,
+                    std::vector<std::vector<internal::ATy>>& in_vec_b,
+                    std::vector<std::vector<size_t>>& out_perms,
+                    std::vector<std::vector<internal::ATy>>& out_vec_a,
+                    std::vector<std::vector<internal::ATy>>& out_vec_b);
+
+  void ASTGet_merge(size_t in_num, size_t out_num,
+                    std::vector<std::vector<internal::ATy>>& in_vec_a,
+                    std::vector<std::vector<internal::ATy>>& in_vec_b,
+                    std::vector<std::vector<internal::ATy>>& out_vec_a,
+                    std::vector<std::vector<internal::ATy>>& out_vec_b);
+
   // TODO:
   // internal::PTy SingleOpenAndCheck(const internal::ATy& in);
 };
