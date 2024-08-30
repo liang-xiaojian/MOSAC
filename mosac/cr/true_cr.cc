@@ -379,8 +379,27 @@ std::vector<internal::PTy> TrueCorrelation::OpenAndCheck(
       absl::MakeConstSpan(val), absl::MakeSpan(real_val));
 
   // Generate Sync Seed After open Value
-  auto sync_seed = conn->SyncSeed();
+  // auto sync_seed = conn->SyncSeed();
+
+  typedef decltype(std::declval<internal::PTy>().GetVal()) INTEGER;
+
+  std::vector<INTEGER> randomness(size, 0);
+  std::transform(randomness.begin(), randomness.end(),
+                 reinterpret_cast<INTEGER*>(val.data()), randomness.begin(),
+                 std::bit_xor<INTEGER>());
+  std::transform(randomness.begin(), randomness.end(),
+                 reinterpret_cast<INTEGER*>(buf.data()), randomness.begin(),
+                 std::bit_xor<INTEGER>());
+  std::transform(randomness.begin(), randomness.end(),
+                 reinterpret_cast<INTEGER*>(real_val.data()),
+                 randomness.begin(), std::bit_xor<INTEGER>());
+  auto seeds = yacl::crypto::Sm3(yacl::ByteContainerView(
+      randomness.data(), randomness.size() * sizeof(INTEGER)));
+  uint128_t sync_seed = 0;
+  std::memcpy(&seeds, &sync_seed, sizeof(uint128_t));
+
   auto coef = internal::op::Rand(sync_seed, size);
+
   // linear combination
   auto real_val_affine =
       internal::op::InPro(absl::MakeSpan(coef), absl::MakeSpan(real_val));
@@ -1019,52 +1038,81 @@ void TrueCorrelation::ASTSet_merge(
     out_vec_b.push_back(std::move(in_vec_b[i]));
   }
 
-  // std::vector<internal::ATy> tmp_buf(out_num * T);
   std::vector<internal::ATy> func0_buf(out_num * T);
   std::vector<internal::ATy> func1_buf(out_num * T);
-
-  // auto tmp_span = absl::MakeSpan(tmp_buf);
+  std::vector<internal::ATy> reveal_buf(out_num * T);
+  auto reveal_span = absl::MakeSpan(reveal_buf);
 
   for (size_t k = 1; k < ext; ++k) {
     for (size_t j = 0; j < out_num; ++j) {
-      std::vector<internal::ATy>& a = out_vec_a[j];
+      // std::vector<internal::ATy>& a = out_vec_a[j];
       std::vector<internal::ATy>& b = out_vec_b[j];
-      std::vector<size_t>& perm = out_perms[j];
+      // std::vector<size_t>& perm = out_perms[j];
 
       std::vector<internal::ATy>& _a = in_vec_a[k * out_num + j];
-      std::vector<internal::ATy>& _b = in_vec_b[k * out_num + j];
-      std::vector<size_t>& _perm = in_perms[k * out_num + j];
+      // std::vector<internal::ATy>& _b = in_vec_b[k * out_num + j];
+      // std::vector<size_t>& _perm = in_perms[k * out_num + j];
 
-      // auto p_span = tmp_span.subspan(j * T, T);
+      auto tmp_span = reveal_span.subspan(j * T, T);
 
-      internal::op::SubInplace(
+      internal::op::Sub(
           absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()),
                          b.size() * 2),
           absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
-                         _a.size() * 2));
+                         _a.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(tmp_span.data()),
+                         T * 2));
+    }
 
-      auto p = OpenAndCheck(absl::MakeSpan(b));
+    auto reveal = OpenAndCheck(reveal_span);
 
-      // for (size_t j = 0; j < out_num; ++j) {
-      //   std::vector<internal::ATy>& a = out_vec_a[j];
-      //   std::vector<internal::ATy>& b = out_vec_b[j];
-      //   std::vector<size_t>& perm = out_perms[j];
+    for (size_t j = 0; j < out_num; ++j) {
+      // std::vector<internal::ATy>& a = out_vec_a[j];
+      // std::vector<internal::ATy>& b = out_vec_b[j];
+      std::vector<size_t>& perm = out_perms[j];
 
-      //   // std::vector<internal::ATy>& _a = in_vec_a[k * out_num + j];
-      //   std::vector<internal::ATy>& _b = in_vec_a[k * out_num + j];
-      //   std::vector<size_t>& _perm = in_perms[k * out_num + j];
+      // std::vector<internal::ATy>& _a = in_vec_a[k * out_num + j];
+      // std::vector<internal::ATy>& _b = in_vec_b[k * out_num + j];
+      std::vector<size_t>& _perm = in_perms[k * out_num + j];
 
-      // auto p_subspan = absl::MakeSpan(p).subspan(j * T, T);
+      auto tmp_span = absl::MakeSpan(reveal).subspan(j * T, T);
 
       std::vector<internal::PTy> shuffle_p(T);
       std::vector<size_t> shuffle_perm(T);
       for (size_t i = 0; i < T; ++i) {
-        shuffle_p[_perm[i]] = p[i];
+        shuffle_p[_perm[i]] = tmp_span[i];
         shuffle_perm[i] = _perm[perm[i]];
       }
 
-      std::vector<internal::ATy> shuffle_p_A(T);
-      AuthSet(absl::MakeConstSpan(shuffle_p), absl::MakeSpan(shuffle_p_A));
+      std::swap(perm, shuffle_perm);
+      std::copy(shuffle_p.begin(), shuffle_p.end(), tmp_span.begin());
+    }
+
+    std::vector<internal::ATy> reveal_shuffle(out_num * T);
+    AuthSet(absl::MakeConstSpan(reveal), absl::MakeSpan(reveal_shuffle));
+
+    for (size_t j = 0; j < out_num; ++j) {
+      std::vector<internal::ATy>& a = out_vec_a[j];
+      std::vector<internal::ATy>& b = out_vec_b[j];
+      // std::vector<size_t>& perm = out_perms[j];
+
+      // std::vector<internal::ATy>& _a = in_vec_a[k * out_num + j];
+      std::vector<internal::ATy>& _b = in_vec_b[k * out_num + j];
+      // std::vector<size_t>& _perm = in_perms[k * out_num + j];
+
+      // auto tmp_span = absl::MakeSpan(reveal).subspan(j * T, T);
+
+      // std::vector<internal::PTy> shuffle_p(T);
+      // std::vector<size_t> shuffle_perm(T);
+      // for (size_t i = 0; i < T; ++i) {
+      //   shuffle_p[_perm[i]] = tmp_span[i];
+      //   shuffle_perm[i] = _perm[perm[i]];
+      // }
+
+      // std::vector<internal::ATy> shuffle_p_A(T);
+      // AuthSet(absl::MakeConstSpan(shuffle_p), absl::MakeSpan(shuffle_p_A));
+
+      auto shuffle_p_A = absl::MakeSpan(reveal_shuffle).subspan(j * T, T);
 
       internal::op::AddInplace(
           absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()),
@@ -1076,7 +1124,7 @@ void TrueCorrelation::ASTSet_merge(
       std::copy(a.begin(), a.end(), func1_buf.begin() + j * T);
 
       std::copy(_b.begin(), _b.end(), b.begin());
-      std::swap(perm, shuffle_perm);
+      // std::swap(perm, shuffle_perm);
     }
 
     auto _b_x = _Func(absl::MakeConstSpan(func0_buf), xs[k - 1]);
@@ -1116,39 +1164,44 @@ void TrueCorrelation::ASTGet_merge(
     out_vec_b.push_back(std::move(in_vec_b[i]));
   }
 
-  // std::vector<internal::ATy> tmp_buf(out_num * T);
   std::vector<internal::ATy> func0_buf(out_num * T);
   std::vector<internal::ATy> func1_buf(out_num * T);
-
-  // auto tmp_span = absl::MakeSpan(tmp_buf);
+  std::vector<internal::ATy> reveal_buf(out_num * T);
+  auto reveal_span = absl::MakeSpan(reveal_buf);
 
   for (size_t k = 1; k < ext; ++k) {
+    for (size_t j = 0; j < out_num; ++j) {
+      // std::vector<internal::ATy>& a = out_vec_a[j];
+      std::vector<internal::ATy>& b = out_vec_b[j];
+
+      std::vector<internal::ATy>& _a = in_vec_a[k * out_num + j];
+      // std::vector<internal::ATy>& _b = in_vec_b[k * out_num + j];
+
+      auto tmp_span = reveal_span.subspan(j * T, T);
+
+      internal::op::Sub(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()),
+                         b.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
+                         _a.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(tmp_span.data()),
+                         T * 2));
+    }
+
+    [[maybe_unused]] auto reveal = OpenAndCheck(reveal_span);
+    std::vector<internal::ATy> reveal_shuffle(out_num * T);
+    AuthGet(absl::MakeSpan(reveal_shuffle));
+
     for (size_t j = 0; j < out_num; ++j) {
       std::vector<internal::ATy>& a = out_vec_a[j];
       std::vector<internal::ATy>& b = out_vec_b[j];
 
-      std::vector<internal::ATy>& _a = in_vec_a[k * out_num + j];
+      // std::vector<internal::ATy>& _a = in_vec_a[k * out_num + j];
       std::vector<internal::ATy>& _b = in_vec_b[k * out_num + j];
 
-      // auto p_span = tmp_span.subspan(j * T, T);
-
-      internal::op::SubInplace(
-          absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()),
-                         b.size() * 2),
-          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
-                         _a.size() * 2));
-
-      [[maybe_unused]] auto p = OpenAndCheck(absl::MakeSpan(b));
-
-      // for (size_t j = 0; j < out_num; ++j) {
-      //   std::vector<internal::ATy>& a = out_vec_a[j];
-      //   std::vector<internal::ATy>& b = out_vec_b[j];
-
-      //   // std::vector<internal::ATy>& _a = in_vec_a[k * out_num + j];
-      //   std::vector<internal::ATy>& _b = in_vec_b[k * out_num + j];
-
-      std::vector<internal::ATy> shuffle_p_A(T);
-      AuthGet(absl::MakeSpan(shuffle_p_A));
+      // std::vector<internal::ATy> shuffle_p_A(T);
+      // AuthGet(absl::MakeSpan(shuffle_p_A));
+      auto shuffle_p_A = absl::MakeSpan(reveal_shuffle).subspan(j * T, T);
 
       internal::op::AddInplace(
           absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()),

@@ -16,10 +16,13 @@ namespace yc = yacl::crypto;
 // (DY-PRF) Group Type
 // using GTy = ym::MPInt;
 
-using PTy = kFp128;
-using op = op128;
-// using PTy = kFp64;
-// using op = op64;
+// Field 128 bits
+// using PTy = kFp128;
+// using op = op128;
+
+// Field 64 bits
+using PTy = kFp64;
+using op = op64;
 
 // using GTy = yc::EcPoint;
 
