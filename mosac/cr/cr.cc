@@ -9,7 +9,7 @@ BeaverTy Correlation::BeaverTriple(size_t num) {
   if (cache_ != nullptr && cache_->BeaverCacheSize() >= num) {
     return cache_->BeaverTriple(num);
   }
-  SPDLOG_DEBUG("Miss match");
+  SPDLOG_INFO("BeaverTriple Uncached");
   std::vector<internal::ATy> a(num);
   std::vector<internal::ATy> b(num);
   std::vector<internal::ATy> c(num);
@@ -21,7 +21,7 @@ AuthTy Correlation::RandomSet(size_t num) {
   if (cache_ != nullptr && cache_->RandomSetSize() >= num) {
     return cache_->RandomSet(num);
   }
-  SPDLOG_DEBUG("Miss match");
+  SPDLOG_INFO("RandomSet Uncached");
   std::vector<internal::ATy> ret(num);
   RandomSet(absl::MakeSpan(ret));
   return AuthTy(std::move(ret));
@@ -31,7 +31,7 @@ AuthTy Correlation::RandomGet(size_t num) {
   if (cache_ != nullptr && cache_->RandomGetSize() >= num) {
     return cache_->RandomGet(num);
   }
-  SPDLOG_DEBUG("Miss match");
+  SPDLOG_INFO("RandomGet Uncached");
   std::vector<internal::ATy> ret(num);
   RandomGet(absl::MakeSpan(ret));
   return AuthTy(std::move(ret));
@@ -51,7 +51,7 @@ AuthTy Correlation::RandomAuth(size_t num) {
         absl::MakeSpan(reinterpret_cast<internal::PTy*>(out.data()), 2 * num));
     return AuthTy(std::move(out));
   }
-  SPDLOG_DEBUG("Miss match");
+  SPDLOG_INFO("RandomAuth Uncached");
   std::vector<internal::ATy> ret(num);
   RandomAuth(absl::MakeSpan(ret));
   return AuthTy(std::move(ret));
@@ -61,7 +61,7 @@ ShuffleSTy Correlation::ShuffleSet(size_t num, size_t repeat) {
   if (cache_ != nullptr && cache_->ShuffleSetCount(num, repeat)) {
     return cache_->ShuffleSet(num, repeat);
   }
-  SPDLOG_DEBUG("Miss match");
+  SPDLOG_INFO("Shuffle Set Uncached");
   std::vector<internal::PTy> delta(num * repeat);
   std::vector<size_t> perm = GenPerm(num);
   ShuffleSet(absl::MakeSpan(perm), absl::MakeSpan(delta), repeat);
@@ -72,7 +72,7 @@ ShuffleGTy Correlation::ShuffleGet(size_t num, size_t repeat) {
   if (cache_ != nullptr && cache_->ShuffleGetCount(num, repeat)) {
     return cache_->ShuffleGet(num, repeat);
   }
-  SPDLOG_DEBUG("Miss match");
+  SPDLOG_INFO("Shuffle Get Uncached");
   std::vector<internal::PTy> a(num * repeat);
   std::vector<internal::PTy> b(num * repeat);
   ShuffleGet(absl::MakeSpan(a), absl::MakeSpan(b), repeat);
@@ -83,7 +83,7 @@ ASTSTy Correlation::ASTSet(size_t num) {
   if (cache_ != nullptr && cache_->ASTSetCount(num)) {
     return cache_->ASTSet(num);
   }
-  SPDLOG_DEBUG("Miss match");
+  SPDLOG_INFO("AST Set Uncached");
   std::vector<internal::ATy> a(num);
   std::vector<internal::ATy> b(num);
   std::vector<size_t> perm = ASTSet(absl::MakeSpan(a), absl::MakeSpan(b));
@@ -94,10 +94,24 @@ ASTGTy Correlation::ASTGet(size_t num) {
   if (cache_ != nullptr && cache_->ASTGetCount(num)) {
     return cache_->ASTGet(num);
   }
-  SPDLOG_DEBUG("Miss match");
+  SPDLOG_INFO("AST Get Uncached");
   std::vector<internal::ATy> a(num);
   std::vector<internal::ATy> b(num);
   ASTGet(absl::MakeSpan(a), absl::MakeSpan(b));
+  return ASTGTy(std::move(a), std::move(b));
+}
+
+ASTSTy Correlation::ASTSet_2k(size_t T, size_t num) {
+  std::vector<internal::ATy> a(num);
+  std::vector<internal::ATy> b(num);
+  std::vector<size_t> perm = ASTSet_2k(T, absl::MakeSpan(a), absl::MakeSpan(b));
+  return ASTSTy(std::move(perm), std::move(a), std::move(b));
+}
+
+ASTGTy Correlation::ASTGet_2k(size_t T, size_t num) {
+  std::vector<internal::ATy> a(num);
+  std::vector<internal::ATy> b(num);
+  ASTGet_2k(T, absl::MakeSpan(a), absl::MakeSpan(b));
   return ASTGTy(std::move(a), std::move(b));
 }
 
@@ -105,6 +119,7 @@ NMulTy Correlation::NMul(size_t num) {
   if (cache_ != nullptr && cache_->NMulCount(num)) {
     return cache_->NMul(num);
   }
+  SPDLOG_INFO("NMul Uncached");
   std::vector<internal::ATy> r(num);
   internal::ATy mul_inv = NMul(absl::MakeSpan(r));
   return NMulTy(std::move(r), mul_inv);
@@ -120,7 +135,7 @@ void Correlation::force_cache(size_t beaver_num, size_t rand_set_num,
                               const std::vector<uint64_t>& n_mul_shape) {
   cache_ = std::make_unique<CorrelationCache>();
   // beaver
-  {
+  if (beaver_num != 0) {
     cache_->beaver_cache = BeaverTy(beaver_num);
     auto& a = cache_->beaver_cache.a;
     auto& b = cache_->beaver_cache.b;

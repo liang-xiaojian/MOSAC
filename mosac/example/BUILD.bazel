@@ -1,0 +1,20 @@
+load("//bazel:mosac.bzl", "mosac_cc_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+mosac_cc_binary(
+    name = "memory_example",
+    srcs = ["memory_example.cc"],
+    deps = [
+        "//mosac/context:register",
+        "//mosac/ss:protocol",
+        "//mosac/utils:test_util",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/base:int128",
+        "@yacl//yacl/link",
+        "@yacl//yacl/utils:serialize",
+        "@yacl//yacl/utils:parallel",
+        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/strings",
+    ],
+)

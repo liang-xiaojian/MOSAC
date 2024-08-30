@@ -31,7 +31,8 @@ uint128_t inline exgcd128(uint128_t a, uint128_t b, uint128_t &x,
     std::tie(x1, x2, x3, x4, a, b) =
         std::make_tuple(x3, x4, x1 - x3 * c, x2 - x4 * c, b, a - b * c);
   }
-  x = x1, y = x2;
+  x = x1;
+  y = x2;
   return a;
 }
 
@@ -48,17 +49,26 @@ uint128_t inline exgcd128(uint128_t a, uint128_t b, uint128_t &x,
 //   return mpz_get_ui(ret);
 // }
 
-} // namespace
+}  // namespace
 
 class kFp64 {
-public:
+ public:
   kFp64() : val_(0) {}
 
-  kFp64(int val) : val_(val % Prime64) {}
+  kFp64(int val) { val_ = val % Prime64; }
 
-  kFp64(uint64_t val) : val_(val % Prime64) {}
+  kFp64(uint64_t val) {
+    auto tmp = (val & Prime64) + (val >> 61);
+    tmp == Prime64 ? val_ = 0 : val_ = tmp;
+  }
 
-  kFp64(uint128_t val) : val_(val % Prime64) {}
+  kFp64(uint128_t val) {
+    auto tmp = (val & yacl::MakeUint128(0, Prime64)) + (val >> 61);
+    tmp = (tmp & yacl::MakeUint128(0, Prime64)) + (tmp >> 61);
+    auto [high, low] = yacl::DecomposeUInt128(tmp);
+    YACL_ENFORCE(high == 0);
+    low == Prime64 ? val_ = 0 : val_ = low;
+  }
 
   kFp64 operator+(const kFp64 &rhs) const { return kFp64(val_ + rhs.val_); }
 
@@ -107,35 +117,50 @@ public:
 
   static uint64_t GetPrime() { return Prime64; }
 
-  static kFp64 One() { return kFp64(1); }
+  static kFp64 One() { return kFp64((uint64_t)1); }
 
-  static kFp64 Zero() { return kFp64(0); }
+  static kFp64 Zero() { return kFp64((uint64_t)0); }
 
-protected:
+ protected:
   uint64_t val_;
 };
 
 class kFp128 {
-public:
+ public:
   kFp128() : val_(yacl::MakeUint128(0, 0)) {}
 
-  kFp128(int val) : kFp128(val + Prime128) {}
+  kFp128(int val) { val_ = val % Prime128; }
 
   kFp128(uint64_t val) : val_(yacl::MakeUint128(0, val)) {}
 
-  kFp128(uint128_t val) : val_(val % Prime128) {}
+  kFp128(uint128_t val) {
+    uint128_t tmp = (val & Prime128) + (val >> 127);
+    tmp == Prime128 ? val_ = 0 : val_ = tmp;
+  }
 
-  kFp128(uint256_t val) : val_(val % Prime128) {}
+  kFp128(uint256_t val) {
+    auto tmp = (val & Prime128) + (val >> 127);
+    tmp = (tmp & Prime128) + (tmp >> 127);
 
-  kFp128 operator+(const kFp128 &rhs) const { return kFp128(val_ + rhs.val_); }
+    uint128_t low = static_cast<uint128_t>(tmp & Prime128);
+    low == Prime128 ? val_ = 0 : val_ = low;
+  }
+
+  kFp128 operator+(const kFp128 &rhs) const {
+    // auto tmp = static_cast<uint256_t>(val_) +
+    // static_cast<uint256_t>(rhs.val_);
+    return kFp128(val_ + rhs.val_);
+  }
 
   kFp128 operator-(const kFp128 &rhs) const {
+    // auto tmp = static_cast<uint256_t>(val_) + Prime128 -
+    //            static_cast<uint256_t>(rhs.val_);
     return kFp128(val_ + Prime128 - rhs.val_);
   }
 
   kFp128 operator*(const kFp128 &rhs) const {
-    uint256_t l = val_;
-    uint256_t r = rhs.val_;
+    uint256_t l = static_cast<uint256_t>(val_);
+    uint256_t r = static_cast<uint256_t>(rhs.val_);
     return kFp128(l * r);
   }
 
@@ -174,12 +199,12 @@ public:
 
   static uint128_t GetPrime() { return Prime128; }
 
-  static kFp128 One() { return kFp128(1); }
+  static kFp128 One() { return kFp128((uint64_t)1); }
 
-  static kFp128 Zero() { return kFp128(0); }
+  static kFp128 Zero() { return kFp128((uint64_t)0); }
 
-protected:
+ protected:
   uint128_t val_;
 };
 
-}; // namespace mosac
+};  // namespace mosac

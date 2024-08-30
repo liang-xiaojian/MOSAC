@@ -43,6 +43,27 @@ class OtHelper {
                           absl::Span<internal::PTy> A,
                           absl::Span<internal::PTy> C);
 
+  // a * b = c && A * b = C (with given b)
+  void MulPPExtendSendWithChosenB(std::shared_ptr<Connection> conn,
+                                  absl::Span<const internal::PTy> b,
+                                  absl::Span<internal::PTy> c,
+                                  absl::Span<internal::PTy> C);
+
+  // a * b = c && A * b = C (with given b)
+  void MulPPExtendRecvWithChosenB(std::shared_ptr<Connection> conn,
+                                  absl::Span<internal::PTy> a,
+                                  absl::Span<internal::PTy> c,
+                                  absl::Span<internal::PTy> A,
+                                  absl::Span<internal::PTy> C);
+
+  // a * b = c && A * b = C (with given b)
+  void BeaverTripleExtendWithChosenB(std::shared_ptr<Connection> conn,
+                                     absl::Span<internal::PTy> a,
+                                     absl::Span<const internal::PTy> b,
+                                     absl::Span<internal::PTy> c,
+                                     absl::Span<internal::PTy> A,
+                                     absl::Span<internal::PTy> C);
+
   void BaseVoleSend(std::shared_ptr<Connection> conn, internal::PTy delta,
                     absl::Span<internal::PTy> c);
 
@@ -64,6 +85,17 @@ class OtHelper {
   void ASTRecv(std::shared_ptr<Connection> conn,
                absl::Span<const internal::ATy> r, absl::Span<internal::ATy> a,
                absl::Span<internal::ATy> b);
+
+  void BatchASTSend(std::shared_ptr<Connection>& conn, size_t total_num,
+                    size_t per_size, absl::Span<const internal::ATy> r,
+                    const std::vector<std::vector<size_t>>& perms,
+                    std::vector<std::vector<internal::ATy>>& lhs,
+                    std::vector<std::vector<internal::ATy>>& rhs);
+
+  void BatchASTRecv(std::shared_ptr<Connection> conn, size_t total_num,
+                    size_t per_size, absl::Span<const internal::ATy> r,
+                    std::vector<std::vector<internal::ATy>>& lhs,
+                    std::vector<std::vector<internal::ATy>>& rhs);
 
  private:
   std::shared_ptr<OtAdapter> ot_sender_{nullptr};

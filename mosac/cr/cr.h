@@ -148,6 +148,12 @@ class Correlation : public State {
                       absl::Span<internal::ATy> b) = 0;
   virtual internal::ATy NMul(absl::Span<internal::ATy> r) = 0;
 
+  virtual std::vector<size_t> ASTSet_2k(size_t T, absl::Span<internal::ATy> a,
+                                        absl::Span<internal::ATy> b) = 0;
+
+  virtual void ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
+                         absl::Span<internal::ATy> b) = 0;
+
   // interface
   BeaverTy BeaverTriple(size_t num);
   AuthTy RandomSet(size_t num);
@@ -158,6 +164,9 @@ class Correlation : public State {
   ASTSTy ASTSet(size_t num);
   ASTGTy ASTGet(size_t num);
   NMulTy NMul(size_t num);
+
+  ASTSTy ASTSet_2k(size_t T, size_t num);
+  ASTGTy ASTGet_2k(size_t T, size_t num);
 
   // ------------ cache -------------
  private:
@@ -198,7 +207,8 @@ class Correlation : public State {
         "get num: {} , shuffle set num: {} , shuffle get num: {} , AST set "
         "num: {} , AST get num: {} , N mul num: {}",
         ctx_->GetRank(), b_num_, r_s_num_, r_g_num_, s_s_shape_.size(),
-        s_g_shape_.size(), ast_s_shape_.size(), ast_g_shape_.size());
+        s_g_shape_.size(), ast_s_shape_.size(), ast_g_shape_.size(),
+        n_mul_shape_.size());
     force_cache(b_num_, r_s_num_, r_g_num_, s_s_shape_, s_g_shape_,
                 ast_s_shape_, ast_g_shape_, n_mul_shape_);
   }

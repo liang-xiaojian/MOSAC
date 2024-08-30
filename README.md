@@ -46,3 +46,8 @@ performance mode
 bazel build -c opt //... # compile all files (with -O2)
 bazel test -c opt //... # run all test (with -O2)
 ```
+
+examples
+```sh
+bazel run -c opt //mosac/example:memory_example.cc # secure shuffle in memory model
+```

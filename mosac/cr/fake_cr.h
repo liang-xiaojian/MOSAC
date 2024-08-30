@@ -43,6 +43,11 @@ class FakeCorrelation : public Correlation {
   void ASTGet(absl::Span<internal::ATy> a,
               absl::Span<internal::ATy> b) override;
 
+  std::vector<size_t> ASTSet_2k(size_t T, absl::Span<internal::ATy> a,
+                                absl::Span<internal::ATy> b) override;
+  void ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
+                 absl::Span<internal::ATy> b) override;
+
   // entry
   internal::ATy NMul(absl::Span<internal::ATy> r) override;
 };

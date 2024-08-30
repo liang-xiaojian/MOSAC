@@ -84,7 +84,7 @@ void OtHelper::MulPPRecv(std::shared_ptr<Connection> conn,
 
   auto recv_buf = conn->Recv(conn->NextRank(), "Beaver:MulPP");
   auto recv_span = absl::MakeConstSpan(
-      reinterpret_cast<internal::PTy *>(recv_buf.data()), ot_num);
+      reinterpret_cast<internal::PTy*>(recv_buf.data()), ot_num);
 
   for (size_t i = 0; i < num; ++i) {
     c[i] = internal::PTy::Zero();
@@ -222,7 +222,7 @@ void OtHelper::MulPPExtendRecv(std::shared_ptr<Connection> conn,
 
   auto recv_buf = conn->Recv(conn->NextRank(), "Beaver:MulPP");
   auto recv_span = absl::MakeConstSpan(
-      reinterpret_cast<internal::PTy *>(recv_buf.data()), ot_num);
+      reinterpret_cast<internal::PTy*>(recv_buf.data()), ot_num);
 
   auto ext_c = internal::op::Zeros(ext_num);
   for (size_t i = 0; i < ext_num; ++i) {
@@ -310,6 +310,191 @@ void OtHelper::BeaverTripleExtend(std::shared_ptr<Connection> conn,
                     absl::MakeSpan(C));
 }
 
+// -----------------------------------
+// Extend Beaver Triple with Chosen B
+// -----------------------------------
+
+void OtHelper::MulPPExtendSendWithChosenB(std::shared_ptr<Connection> conn,
+                                          absl::Span<const internal::PTy> b,
+                                          absl::Span<internal::PTy> c,
+                                          absl::Span<internal::PTy> C) {
+  const size_t num = b.size();
+  YACL_ENFORCE(num == c.size());
+  // bits in Public Type
+  const size_t PTy_bits = sizeof(internal::PTy) * 8;
+  // beaver extend num = num * extend factor
+  const size_t ext_num = num * kExtFactor;
+  // ot num = num * extend factor * bits of Public Type
+  const size_t ot_num = ext_num * PTy_bits;
+
+  std::vector<std::array<uint128_t, 2>> ot_send_msgs(ot_num);
+  ot_sender_->send_rot(absl::MakeSpan(ot_send_msgs));  // rot
+
+  // Convert ROT to additive-COT
+  auto send_msgs = std::vector<internal::PTy>(ot_num);
+  for (size_t i = 0; i < num; ++i) {
+    // ot_block0 - ot_block1 + b
+    // c = - block0
+    for (size_t j = 0; j < kExtFactor; ++j) {
+      const size_t offset = i * kExtFactor * PTy_bits + j * PTy_bits;
+      auto bi_k = b[i];
+      for (size_t k = 0; k < PTy_bits; ++k) {
+        send_msgs[offset + k] = internal::PTy(ot_send_msgs[offset + k][0]) -
+                                internal::PTy(ot_send_msgs[offset + k][1]) +
+                                bi_k;
+        bi_k = bi_k * internal::PTy(2);
+      }
+    }
+  }
+
+  // send
+  conn->SendAsync(
+      conn->NextRank(),
+      yacl::ByteContainerView(send_msgs.data(),
+                              send_msgs.size() * sizeof(internal::PTy)),
+      "Beaver:MulPP");
+
+  auto ext_c = internal::op::Zeros(ext_num);
+  for (size_t i = 0; i < ext_num; ++i) {
+    const size_t offset = i * PTy_bits;
+    for (size_t j = 0; j < PTy_bits; ++j) {
+      ext_c[i] = ext_c[i] - internal::PTy(ot_send_msgs[offset + j][0]);
+    }
+  }
+
+  // sync and generate the coefficient
+  auto seed = conn->SyncSeed();
+  auto coef = internal::op::Rand(seed, ext_num * 2);
+
+  auto coef_span = absl::MakeConstSpan(coef);
+  //
+  auto cc = internal::op::Mul(absl::MakeConstSpan(ext_c),
+                              coef_span.subspan(0, ext_num));
+  //
+  auto CC = internal::op::Mul(absl::MakeConstSpan(ext_c),
+                              coef_span.subspan(ext_num, ext_num));
+
+  for (size_t i = 0; i < num; ++i) {
+    c[i] = internal::PTy::Zero();
+    C[i] = internal::PTy::Zero();
+    for (size_t j = 0; j < kExtFactor; ++j) {
+      c[i] = c[i] + cc[i * kExtFactor + j];
+      C[i] = C[i] + CC[i * kExtFactor + j];
+    }
+  }
+}
+
+void OtHelper::MulPPExtendRecvWithChosenB(std::shared_ptr<Connection> conn,
+                                          absl::Span<internal::PTy> a,
+                                          absl::Span<internal::PTy> c,
+                                          absl::Span<internal::PTy> A,
+                                          absl::Span<internal::PTy> C) {
+  const size_t num = a.size();
+  YACL_ENFORCE(num == c.size());
+  // bits in Public Type
+  const size_t PTy_bits = sizeof(internal::PTy) * 8;
+  // beaver extend num = num * extend factor
+  const size_t ext_num = num * kExtFactor;
+  // ot num = num * extend factor * bits of Public Type
+  const size_t ot_num = ext_num * PTy_bits;
+
+  auto ext_a = internal::op::Rand(ext_num);
+  auto choices = yacl::dynamic_bitset<uint128_t>(ot_num);
+  memcpy(choices.data(), ext_a.data(), ext_num * sizeof(internal::PTy));
+
+  std::vector<uint128_t> ot_recv_msgs(ot_num);
+  ot_receiver_->recv_rot(absl::MakeSpan(ot_recv_msgs), choices);
+
+  auto recv_buf = conn->Recv(conn->NextRank(), "Beaver:MulPP");
+  auto recv_span = absl::MakeConstSpan(
+      reinterpret_cast<internal::PTy*>(recv_buf.data()), ot_num);
+
+  auto ext_c = internal::op::Zeros(ext_num);
+  for (size_t i = 0; i < ext_num; ++i) {
+    const size_t offset = i * PTy_bits;
+    for (size_t j = 0; j < PTy_bits; ++j) {
+      ext_c[i] = ext_c[i] + internal::PTy(ot_recv_msgs[offset + j]);
+      if (choices[offset + j]) {
+        ext_c[i] = ext_c[i] + internal::PTy(recv_span[offset + j]);
+      }
+    }
+  }
+  // sync and generate the coefficient
+  auto seed = conn->SyncSeed();
+  auto coef = internal::op::Rand(seed, ext_num * 2);
+  auto coef_span = absl::MakeConstSpan(coef);
+
+  auto aa = internal::op::Mul(absl::MakeConstSpan(ext_a),
+                              coef_span.subspan(0, ext_num));
+  auto cc = internal::op::Mul(absl::MakeConstSpan(ext_c),
+                              coef_span.subspan(0, ext_num));
+
+  auto AA = internal::op::Mul(absl::MakeConstSpan(ext_a),
+                              coef_span.subspan(ext_num, ext_num));
+  auto CC = internal::op::Mul(absl::MakeConstSpan(ext_c),
+                              coef_span.subspan(ext_num, ext_num));
+
+  for (size_t i = 0; i < num; ++i) {
+    c[i] = internal::PTy::Zero();
+    a[i] = internal::PTy::Zero();
+
+    C[i] = internal::PTy::Zero();
+    A[i] = internal::PTy::Zero();
+    for (size_t j = 0; j < kExtFactor; ++j) {
+      c[i] = c[i] + cc[i * kExtFactor + j];
+      a[i] = a[i] + aa[i * kExtFactor + j];
+
+      C[i] = C[i] + CC[i * kExtFactor + j];
+      A[i] = A[i] + AA[i * kExtFactor + j];
+    }
+  }
+}
+
+void OtHelper::BeaverTripleExtendWithChosenB(std::shared_ptr<Connection> conn,
+                                             absl::Span<internal::PTy> a,
+                                             absl::Span<const internal::PTy> b,
+                                             absl::Span<internal::PTy> c,
+                                             absl::Span<internal::PTy> A,
+                                             absl::Span<internal::PTy> C) {
+  const size_t num = c.size();
+  YACL_ENFORCE(num == a.size());
+  YACL_ENFORCE(num == b.size());
+  YACL_ENFORCE(num == A.size());
+  YACL_ENFORCE(num == C.size());
+
+  auto c0 = internal::op::Zeros(num);
+  auto c1 = internal::op::Zeros(num);
+
+  auto C0 = internal::op::Zeros(num);
+  auto C1 = internal::op::Zeros(num);
+  if (conn->Rank() == 0) {
+    MulPPExtendSendWithChosenB(conn, absl::MakeSpan(b), absl::MakeSpan(c0),
+                               absl::MakeSpan(C0));
+    MulPPExtendRecvWithChosenB(conn, absl::MakeSpan(a), absl::MakeSpan(c1),
+                               absl::MakeSpan(A), absl::MakeSpan(C1));
+  } else {
+    MulPPExtendRecvWithChosenB(conn, absl::MakeSpan(a), absl::MakeSpan(c1),
+                               absl::MakeSpan(A), absl::MakeSpan(C1));
+    MulPPExtendSendWithChosenB(conn, absl::MakeSpan(b), absl::MakeSpan(c0),
+                               absl::MakeSpan(C0));
+  }
+  internal::op::Add(absl::MakeConstSpan(c0), absl::MakeConstSpan(c1),
+                    absl::MakeSpan(c));
+  // a*b
+  internal::op::Mul(absl::MakeConstSpan(a), absl::MakeConstSpan(b),
+                    absl::MakeSpan(c0));
+  internal::op::Add(absl::MakeConstSpan(c), absl::MakeConstSpan(c0),
+                    absl::MakeSpan(c));
+
+  internal::op::Add(absl::MakeConstSpan(C0), absl::MakeConstSpan(C1),
+                    absl::MakeSpan(C));
+  // A*b
+  internal::op::Mul(absl::MakeConstSpan(A), absl::MakeConstSpan(b),
+                    absl::MakeSpan(C0));
+  internal::op::Add(absl::MakeConstSpan(C), absl::MakeConstSpan(C0),
+                    absl::MakeSpan(C));
+}
+
 // ----------------
 //  Base Vole
 // ----------------
@@ -374,7 +559,7 @@ void OtHelper::BaseVoleSend(std::shared_ptr<Connection> conn,
   extra_c = extra_c + internal::op::InPro(absl::MakeSpan(coef), c);
   auto buf = conn->Recv(conn->NextRank(), "MalBaseVole");
   auto extra_ab =
-      absl::MakeSpan(reinterpret_cast<internal::PTy *>(buf.data()), 2);
+      absl::MakeSpan(reinterpret_cast<internal::PTy*>(buf.data()), 2);
   SPDLOG_INFO("{} v.s. {}", (extra_ab[0] * delta + extra_ab[1]).GetVal(),
               extra_c.GetVal());
   YACL_ENFORCE(extra_ab[0] * delta + extra_ab[1] == extra_c);
@@ -402,7 +587,7 @@ void OtHelper::BaseVoleRecv(std::shared_ptr<Connection> conn,
 
   auto recv_buf = conn->Recv(conn->NextRank(), "Beaver:BaseVole");
   auto recv_span = absl::MakeConstSpan(
-      reinterpret_cast<internal::PTy *>(recv_buf.data()), ot_num);
+      reinterpret_cast<internal::PTy*>(recv_buf.data()), ot_num);
 
   for (size_t i = 0; i < num; ++i) {
     b[i] = internal::PTy::Zero();
@@ -474,6 +659,22 @@ void OtHelper::ASTRecv(std::shared_ptr<Connection> conn,
                        absl::Span<internal::ATy> a,
                        absl::Span<internal::ATy> b) {
   shuffle::ASTRecv(conn, ot_sender_, r, a, b);
+}
+
+void OtHelper::BatchASTSend(std::shared_ptr<Connection>& conn, size_t total_num,
+                            size_t per_size, absl::Span<const internal::ATy> r,
+                            const std::vector<std::vector<size_t>>& perms,
+                            std::vector<std::vector<internal::ATy>>& lhs,
+                            std::vector<std::vector<internal::ATy>>& rhs) {
+  shuffle::BatchASTSend(conn, ot_receiver_, total_num, per_size, r, perms, lhs,
+                        rhs);
+}
+
+void OtHelper::BatchASTRecv(std::shared_ptr<Connection> conn, size_t total_num,
+                            size_t per_size, absl::Span<const internal::ATy> r,
+                            std::vector<std::vector<internal::ATy>>& lhs,
+                            std::vector<std::vector<internal::ATy>>& rhs) {
+  shuffle::BatchASTRecv(conn, ot_sender_, total_num, per_size, r, lhs, rhs);
 }
 
 }  // namespace mosac::ot
