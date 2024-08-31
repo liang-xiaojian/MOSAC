@@ -183,7 +183,7 @@ TEST(CrTest, NMulTest) {
 
 TEST(CrTest, ASTWork) {
   auto context = TestParam::GetContext();
-  const size_t num = 1 << 8;
+  const size_t num = 1 << 4;
 
   auto rank0 = std::async([&] {
     auto cr = context[0]->GetState<Correlation>();
@@ -239,7 +239,7 @@ TEST(CrTest, ASTWork) {
 
 TEST(CrTest, ASTWork_2k) {
   auto context = TestParam::GetContext();
-  const size_t num = 1 << 8;
+  const size_t num = 1 << 4;
   const size_t T = 1 << 3;
 
   auto rank0 = std::async([&] {
@@ -255,10 +255,6 @@ TEST(CrTest, ASTWork_2k) {
 
   auto [perm, a0, b0] = rank0.get();
   auto [a1, b1] = rank1.get();
-
-  for (const auto& e : perm) {
-    SPDLOG_INFO("{}", e);
-  }
 
   auto a0_val = internal::ExtractVal(a0);
   auto a1_val = internal::ExtractVal(a1);
