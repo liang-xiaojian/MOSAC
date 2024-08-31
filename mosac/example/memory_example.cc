@@ -12,7 +12,7 @@ auto OSS(const std::shared_ptr<yacl::link::Context> &lctx,
   auto rank = lctx->Rank();
 
   auto context = std::make_shared<Context>(lctx);
-  SetupContext(context, false /* memory model or socket model */);
+  SetupContext(context, true /* fake CR model or real CR model */);
   auto prot = context->GetState<Protocol>();
 
   // cache offline randomness
@@ -40,7 +40,7 @@ auto OSS(const std::shared_ptr<yacl::link::Context> &lctx,
 }
 
 int main() {
-  size_t num = 10000;
+  size_t num = 100;
   auto val = OP::Rand(num);
 
   auto lctxs = SetupWorld(2);

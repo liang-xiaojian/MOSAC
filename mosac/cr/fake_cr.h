@@ -50,6 +50,8 @@ class FakeCorrelation : public Correlation {
 
   // entry
   internal::ATy NMul(absl::Span<internal::ATy> r) override;
+
+  bool DelayCheck() override { return true; }
 };
 
 }  // namespace mosac

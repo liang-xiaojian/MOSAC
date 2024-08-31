@@ -24,6 +24,8 @@ class TrueCorrelation : public Correlation {
   std::shared_ptr<vole::VoleAdapter> vole_sender_;
   std::shared_ptr<vole::VoleAdapter> vole_receiver_;
 
+  std::vector<internal::PTy> delay_check_buff_;
+
   TrueCorrelation(std::shared_ptr<Context> ctx) : Correlation(ctx) {}
 
   ~TrueCorrelation() {}
@@ -130,6 +132,8 @@ class TrueCorrelation : public Correlation {
   void AuthGet(absl::Span<internal::ATy> out);
 
   std::vector<internal::PTy> OpenAndCheck(absl::Span<const internal::ATy> in);
+  std::vector<internal::PTy> OpenAndDelayCheck(
+      absl::Span<const internal::ATy> in);
 
   std::vector<internal::ATy> Mul(absl::Span<const internal::PTy> lhs,
                                  absl::Span<const internal::ATy> rhs);
@@ -182,6 +186,7 @@ class TrueCorrelation : public Correlation {
                     std::vector<std::vector<internal::ATy>>& out_vec_a,
                     std::vector<std::vector<internal::ATy>>& out_vec_b);
 
+  bool DelayCheck() override;
   // TODO:
   // internal::PTy SingleOpenAndCheck(const internal::ATy& in);
 };

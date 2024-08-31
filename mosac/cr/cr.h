@@ -154,6 +154,8 @@ class Correlation : public State {
   virtual void ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
                          absl::Span<internal::ATy> b) = 0;
 
+  virtual bool DelayCheck() = 0;
+
   // interface
   BeaverTy BeaverTriple(size_t num);
   AuthTy RandomSet(size_t num);

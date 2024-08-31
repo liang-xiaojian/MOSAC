@@ -108,7 +108,7 @@ void TrueCorrelation::BeaverTriple(absl::Span<internal::ATy> a,
       absl::MakeSpan(reinterpret_cast<internal::PTy*>(auth_C.data()), 2 * num));
 
   // internal::PTy type
-  auto aA_cC = OpenAndCheck(auth_abcAC_span.subspan(3 * num, 2 * num));
+  auto aA_cC = OpenAndDelayCheck(auth_abcAC_span.subspan(3 * num, 2 * num));
   auto aA_cC_span = absl::MakeSpan(aA_cC);
   auto aA = aA_cC_span.subspan(0, num);
   auto cC = aA_cC_span.subspan(num, num);
@@ -230,7 +230,7 @@ std::vector<size_t> TrueCorrelation::ASTSet(absl::Span<internal::ATy> a,
                        b.size() * 2),
         absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
                        _a.size() * 2));
-    auto p = OpenAndCheck(absl::MakeConstSpan(b));
+    auto p = OpenAndDelayCheck(absl::MakeConstSpan(b));
     std::vector<internal::PTy> shuffle_p(num);
     std::vector<size_t> shuffle_perm(num);
     for (size_t i = 0; i < num; ++i) {
@@ -255,7 +255,7 @@ std::vector<size_t> TrueCorrelation::ASTSet(absl::Span<internal::ATy> a,
     std::swap(perm, shuffle_perm);
   }
 
-  auto o = OpenAndCheck(absl::MakeConstSpan(zeros));
+  auto o = OpenAndDelayCheck(absl::MakeConstSpan(zeros));
   for (size_t i = 0; i < B; ++i) {
     YACL_ENFORCE(o[i] == internal::PTy(0));
   }
@@ -291,7 +291,7 @@ void TrueCorrelation::ASTGet(absl::Span<internal::ATy> a,
                        b.size() * 2),
         absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
                        _a.size() * 2));
-    [[maybe_unused]] auto p = OpenAndCheck(absl::MakeConstSpan(b));
+    [[maybe_unused]] auto p = OpenAndDelayCheck(absl::MakeConstSpan(b));
 
     std::vector<internal::ATy> shuffle_p_A(num);
     AuthGet(absl::MakeSpan(shuffle_p_A));
@@ -309,7 +309,7 @@ void TrueCorrelation::ASTGet(absl::Span<internal::ATy> a,
     std::copy(_b.begin(), _b.end(), b.begin());
   }
 
-  auto o = OpenAndCheck(absl::MakeConstSpan(zeros));
+  auto o = OpenAndDelayCheck(absl::MakeConstSpan(zeros));
   for (size_t i = 0; i < B; ++i) {
     YACL_ENFORCE(o[i] == internal::PTy(0));
   }
@@ -414,6 +414,84 @@ std::vector<internal::PTy> TrueCorrelation::OpenAndCheck(
   return real_val;
 }
 
+std::vector<internal::PTy> TrueCorrelation::OpenAndDelayCheck(
+    absl::Span<const internal::ATy> in) {
+  const size_t size = in.size();
+  auto [val, mac] = internal::Unpack(absl::MakeSpan(in));
+  auto conn = ctx_->GetConnection();
+  auto val_bv =
+      yacl::ByteContainerView(val.data(), size * sizeof(internal::PTy));
+  std::vector<internal::PTy> real_val(size);
+
+  auto buf = conn->Exchange(val_bv);
+  internal::op::Add(
+      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(buf.data()),
+                          size),
+      absl::MakeConstSpan(val), absl::MakeSpan(real_val));
+
+  // Generate Sync Seed After open Value
+  // auto sync_seed = conn->SyncSeed();
+
+  typedef decltype(std::declval<internal::PTy>().GetVal()) INTEGER;
+
+  std::vector<INTEGER> randomness(size, 0);
+  std::transform(randomness.begin(), randomness.end(),
+                 reinterpret_cast<INTEGER*>(val.data()), randomness.begin(),
+                 std::bit_xor<INTEGER>());
+  std::transform(randomness.begin(), randomness.end(),
+                 reinterpret_cast<INTEGER*>(buf.data()), randomness.begin(),
+                 std::bit_xor<INTEGER>());
+  std::transform(randomness.begin(), randomness.end(),
+                 reinterpret_cast<INTEGER*>(real_val.data()),
+                 randomness.begin(), std::bit_xor<INTEGER>());
+  auto seeds = yacl::crypto::Sm3(yacl::ByteContainerView(
+      randomness.data(), randomness.size() * sizeof(INTEGER)));
+  uint128_t sync_seed = 0;
+  std::memcpy(&seeds, &sync_seed, sizeof(uint128_t));
+
+  auto coef = internal::op::Rand(sync_seed, size);
+
+  // linear combination
+  auto real_val_affine =
+      internal::op::InPro(absl::MakeSpan(coef), absl::MakeSpan(real_val));
+  auto mac_affine =
+      internal::op::InPro(absl::MakeSpan(coef), absl::MakeSpan(mac));
+
+  auto zero_mac = mac_affine - real_val_affine * key_;
+
+  if (ctx_->GetRank() == 0) {
+    delay_check_buff_.push_back(zero_mac);
+  } else {
+    delay_check_buff_.push_back(internal::PTy::Neg(zero_mac));
+  }
+
+  return real_val;
+}
+
+bool TrueCorrelation::DelayCheck() {
+  if (delay_check_buff_.size() == 0) {
+    return true;
+  }
+
+  auto conn = ctx_->GetConnection();
+
+  auto hash_val = yacl::crypto::Sm3(yacl::ByteContainerView(
+      delay_check_buff_.data(),
+      delay_check_buff_.size() * sizeof(internal::PTy)));
+
+  auto remote_hash_val = conn->ExchangeWithCommit(
+      yacl::ByteContainerView(hash_val.data(), hash_val.size()));
+
+  auto flag = (yacl::ByteContainerView(hash_val.data(), hash_val.size()) ==
+               yacl::ByteContainerView(remote_hash_val));
+
+  delay_check_buff_.clear();
+
+  SPDLOG_INFO("delay check result: {} ", flag);
+
+  return flag;
+}
+
 // Copy from MulAA && MulAP && MulPA
 std::vector<internal::ATy> TrueCorrelation::Mul(
     absl::Span<const internal::PTy> lhs, absl::Span<const internal::ATy> rhs) {
@@ -445,7 +523,7 @@ std::vector<internal::ATy> TrueCorrelation::Mul(
                           num * 2),
       absl::MakeSpan(reinterpret_cast<internal::PTy*>(a.data()), num * 2));
 
-  auto diff = OpenAndCheck(absl::MakeConstSpan(a));
+  auto diff = OpenAndDelayCheck(absl::MakeConstSpan(a));
   auto diff_mul_rhs = Mul(absl::MakeConstSpan(diff), absl::MakeConstSpan(rhs));
 
   internal::op::AddInplace(
@@ -502,7 +580,7 @@ std::vector<internal::ATy> TrueCorrelation::Inv(
   RandomAuth(absl::MakeSpan(r));
 
   auto mul = Mul(absl::MakeConstSpan(in), absl::MakeConstSpan(r));
-  auto pub = OpenAndCheck(absl::MakeConstSpan(mul));
+  auto pub = OpenAndDelayCheck(absl::MakeConstSpan(mul));
   auto inv = internal::op::Inv(absl::MakeConstSpan(pub));
   return Mul(absl::MakeConstSpan(r), absl::MakeConstSpan(inv));
 }
@@ -598,7 +676,7 @@ void TrueCorrelation::BeaverTripleWithChosenB(absl::Span<internal::ATy> a,
       absl::MakeSpan(reinterpret_cast<internal::PTy*>(auth_C.data()), 2 * num));
 
   // internal::PTy type
-  auto aA_cC = OpenAndCheck(auth_acAC_span.subspan(2 * num, 2 * num));
+  auto aA_cC = OpenAndDelayCheck(auth_acAC_span.subspan(2 * num, 2 * num));
   auto aA_cC_span = absl::MakeSpan(aA_cC);
   auto aA = aA_cC_span.subspan(0, num);
   auto cC = aA_cC_span.subspan(num, num);
@@ -691,7 +769,7 @@ std::vector<size_t> TrueCorrelation::ASTSet_2k(size_t T,
                          b.size() * 2),
           absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
                          _a.size() * 2));
-      auto p = OpenAndCheck(absl::MakeConstSpan(b));
+      auto p = OpenAndDelayCheck(absl::MakeConstSpan(b));
       std::vector<internal::PTy> shuffle_p(num);
       std::vector<size_t> shuffle_perm(num);
       for (size_t i = 0; i < num; ++i) {
@@ -717,7 +795,7 @@ std::vector<size_t> TrueCorrelation::ASTSet_2k(size_t T,
     }
   }
 
-  auto o = OpenAndCheck(absl::MakeConstSpan(zeros));
+  auto o = OpenAndDelayCheck(absl::MakeConstSpan(zeros));
   for (size_t i = 0; i < depth - 1; ++i) {
     YACL_ENFORCE(o[i] == internal::PTy(0));
   }
@@ -781,7 +859,7 @@ void TrueCorrelation::ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
                          b.size() * 2),
           absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
                          _a.size() * 2));
-      [[maybe_unused]] auto p = OpenAndCheck(absl::MakeConstSpan(b));
+      [[maybe_unused]] auto p = OpenAndDelayCheck(absl::MakeConstSpan(b));
 
       std::vector<internal::ATy> shuffle_p_A(num);
       AuthGet(absl::MakeSpan(shuffle_p_A));
@@ -800,7 +878,7 @@ void TrueCorrelation::ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
     }
   }
 
-  auto o = OpenAndCheck(absl::MakeConstSpan(zeros));
+  auto o = OpenAndDelayCheck(absl::MakeConstSpan(zeros));
   for (size_t i = 0; i < depth - 1; ++i) {
     YACL_ENFORCE(o[i] == internal::PTy(0));
   }
@@ -1064,7 +1142,7 @@ void TrueCorrelation::ASTSet_merge(
                          T * 2));
     }
 
-    auto reveal = OpenAndCheck(reveal_span);
+    auto reveal = OpenAndDelayCheck(reveal_span);
 
     for (size_t j = 0; j < out_num; ++j) {
       // std::vector<internal::ATy>& a = out_vec_a[j];
@@ -1132,7 +1210,7 @@ void TrueCorrelation::ASTSet_merge(
     zeros[k - 1] = {_b_x.val - a_x.val, _b_x.mac - a_x.mac};
   }
 
-  auto o = OpenAndCheck(absl::MakeConstSpan(zeros));
+  auto o = OpenAndDelayCheck(absl::MakeConstSpan(zeros));
   for (size_t i = 0; i < ext - 1; ++i) {
     YACL_ENFORCE(o[i] == internal::PTy(0));
   }
@@ -1188,7 +1266,7 @@ void TrueCorrelation::ASTGet_merge(
                          T * 2));
     }
 
-    [[maybe_unused]] auto reveal = OpenAndCheck(reveal_span);
+    [[maybe_unused]] auto reveal = OpenAndDelayCheck(reveal_span);
     std::vector<internal::ATy> reveal_shuffle(out_num * T);
     AuthGet(absl::MakeSpan(reveal_shuffle));
 
@@ -1219,7 +1297,7 @@ void TrueCorrelation::ASTGet_merge(
     zeros[k - 1] = {_b_x.val - a_x.val, _b_x.mac - a_x.mac};
   }
 
-  auto o = OpenAndCheck(absl::MakeConstSpan(zeros));
+  auto o = OpenAndDelayCheck(absl::MakeConstSpan(zeros));
   for (size_t i = 0; i < ext - 1; ++i) {
     YACL_ENFORCE(o[i] == internal::PTy(0));
   }
