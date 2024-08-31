@@ -1,6 +1,11 @@
-load("//bazel:mosac.bzl", "mosac_cc_binary")
+load("//bazel:mosac.bzl", "mosac_cc_binary", "mosac_cc_library")
 
 package(default_visibility = ["//visibility:public"])
+
+mosac_cc_library(
+    name = "macro",
+    hdrs = ["macro.h"]
+)
 
 mosac_cc_binary(
     name = "memory_example",
@@ -16,5 +21,42 @@ mosac_cc_binary(
         "@yacl//yacl/utils:parallel",
         "@llvm-project//llvm:Support",
         "@com_google_absl//absl/strings",
+        ":macro",
+    ],
+)
+
+mosac_cc_binary(
+    name = "socket_example",
+    srcs = ["socket_example.cc"],
+    deps = [
+        "//mosac/context:register",
+        "//mosac/ss:protocol",
+        "//mosac/utils:test_util",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/base:int128",
+        "@yacl//yacl/link",
+        "@yacl//yacl/utils:serialize",
+        "@yacl//yacl/utils:parallel",
+        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/strings",
+        ":macro",
+    ],
+)
+
+mosac_cc_binary(
+    name = "AST2k_example",
+    srcs = ["AST2k_example.cc"],
+    deps = [
+        "//mosac/context:register",
+        "//mosac/ss:protocol",
+        "//mosac/utils:test_util",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/base:int128",
+        "@yacl//yacl/link",
+        "@yacl//yacl/utils:serialize",
+        "@yacl//yacl/utils:parallel",
+        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/strings",
+        ":macro",
     ],
 )
