@@ -34,7 +34,7 @@ def mosac_cc_binary(
         copts = [],
         **kargs):
     cc_binary(
-        linkopts = linkopts + ["-lm"],
+        linkopts = linkopts + ["-lm -ldl"],
         copts = copts + _mosac_copts(),
         **kargs
     )

@@ -46,6 +46,7 @@ TEST(Setup, InitializeWork) {
   auto ret_a = prot->func(lhs_a, rhs_p);     \
   auto ret = prot->A2P(ret_a);               \
   auto check = OP::func(lhs_p, rhs_p);       \
+  EXPECT_EQ(prot->DelayCheck(), true);       \
   for (size_t i = 0; i < num; ++i) {         \
     EXPECT_EQ(check[i], ret[i]);             \
   }                                          \
@@ -77,6 +78,7 @@ DECLARE_AP_TEST(Div);
   auto ret_a = prot->func(lhs_p, rhs_a);     \
   auto ret = prot->A2P(ret_a);               \
   auto check = OP::func(lhs_p, rhs_p);       \
+  EXPECT_EQ(prot->DelayCheck(), true);       \
   for (size_t i = 0; i < num; ++i) {         \
     EXPECT_EQ(check[i], ret[i]);             \
   }                                          \
@@ -109,6 +111,7 @@ DECLARE_PA_TEST(Div);
   auto ret_a = prot->func(lhs_a, rhs_a);     \
   auto ret = prot->A2P(ret_a);               \
   auto check = OP::func(lhs_p, rhs_p);       \
+  EXPECT_EQ(prot->DelayCheck(), true);       \
   for (size_t i = 0; i < num; ++i) {         \
     EXPECT_EQ(check[i], ret[i]);             \
   }                                          \
@@ -139,12 +142,14 @@ TEST(ProtocolTest, ZeroTest) {
     auto prot = context[0]->GetState<Protocol>();
     auto lhs = prot->ZerosA(num);
     auto ret = prot->A2P(lhs);
+    EXPECT_EQ(prot->DelayCheck(), true);
     return ret;
   });
   auto rank1 = std::async([&] {
     auto prot = context[1]->GetState<Protocol>();
     auto lhs = prot->ZerosA(num);
     auto ret = prot->A2P(lhs);
+    EXPECT_EQ(prot->DelayCheck(), true);
     return ret;
   });
   auto r_b = rank0.get();
@@ -162,12 +167,14 @@ TEST(ProtocolTest, RandATest) {
     auto prot = context[0]->GetState<Protocol>();
     auto lhs = prot->RandA(num);
     auto ret = prot->A2P(lhs);
+    EXPECT_EQ(prot->DelayCheck(), true);
     return ret;
   });
   auto rank1 = std::async([&] {
     auto prot = context[1]->GetState<Protocol>();
     auto lhs = prot->RandA(num);
     auto ret = prot->A2P(lhs);
+    EXPECT_EQ(prot->DelayCheck(), true);
     return ret;
   });
   auto r_b = rank0.get();
@@ -186,6 +193,7 @@ TEST(ProtocolTest, InvATest) {
     auto rhs = prot->Inv(lhs);
     auto ret_a = prot->Mul(lhs, rhs);
     auto ret_p = prot->A2P(ret_a);
+    EXPECT_EQ(prot->DelayCheck(), true);
     return ret_p;
   });
   auto rank1 = std::async([&] {
@@ -194,6 +202,7 @@ TEST(ProtocolTest, InvATest) {
     auto rhs = prot->Inv(lhs);
     auto ret_a = prot->Mul(lhs, rhs);
     auto ret_p = prot->A2P(ret_a);
+    EXPECT_EQ(prot->DelayCheck(), true);
     return ret_p;
   });
   auto r_b = rank0.get();
@@ -212,6 +221,7 @@ TEST(ProtocolTest, ConvertTest) {
     auto lhs = prot->RandP(num);
     auto a = prot->P2A(lhs);
     auto ret = prot->A2P(a);
+    EXPECT_EQ(prot->DelayCheck(), true);
     return ret;
   });
   auto rank1 = std::async([&] {
@@ -219,6 +229,7 @@ TEST(ProtocolTest, ConvertTest) {
     auto lhs = prot->RandP(num);
     auto a = prot->P2A(lhs);
     auto ret = prot->A2P(a);
+    EXPECT_EQ(prot->DelayCheck(), true);
     return ret;
   });
   auto r_b = rank0.get();
@@ -242,6 +253,7 @@ TEST(ProtocolTest, ShuffleTwoSideTest) {
     auto r_a = prot->P2A(r_p);
     auto s_a = prot->ShuffleA(r_a);
     auto s_p = prot->A2P(s_a);
+    EXPECT_EQ(prot->DelayCheck(), true);
 
     std::vector<INTEGER> sort_r(num);
     std::vector<INTEGER> sort_s(num);
@@ -262,6 +274,7 @@ TEST(ProtocolTest, ShuffleTwoSideTest) {
     auto r_a = prot->P2A(r_p);
     auto s_a = prot->ShuffleA(r_a);
     auto s_p = prot->A2P(s_a);
+    EXPECT_EQ(prot->DelayCheck(), true);
 
     std::vector<INTEGER> sort_r(num);
     std::vector<INTEGER> sort_s(num);
@@ -294,6 +307,7 @@ TEST(ProtocolTest, SShuffleTwoSideTest) {
     auto r_a = prot->P2A(r_p);
     auto s_a = prot->SShuffleA(r_a);
     auto s_p = prot->A2P(s_a);
+    EXPECT_EQ(prot->DelayCheck(), true);
 
     std::vector<INTEGER> sort_r(num);
     std::vector<INTEGER> sort_s(num);
@@ -314,6 +328,7 @@ TEST(ProtocolTest, SShuffleTwoSideTest) {
     auto r_a = prot->P2A(r_p);
     auto s_a = prot->SShuffleA(r_a);
     auto s_p = prot->A2P(s_a);
+    EXPECT_EQ(prot->DelayCheck(), true);
 
     std::vector<INTEGER> sort_r(num);
     std::vector<INTEGER> sort_s(num);
@@ -341,8 +356,9 @@ TEST(ProtocolTest, NMulATest) {
     auto rand_a = prot->RandA(num);
     auto product_a = prot->NMulA(rand_a);
     auto product_p = prot->A2P(product_a);
-
     auto rand_p = prot->A2P(rand_a);
+    EXPECT_EQ(prot->DelayCheck(), true);
+
     auto check = std::reduce(rand_p.begin(), rand_p.end(), PTy(1), PTy::Mul);
 
     EXPECT_EQ(product_p.size(), 1);
@@ -353,8 +369,9 @@ TEST(ProtocolTest, NMulATest) {
     auto rand_a = prot->RandA(num);
     auto product_a = prot->NMulA(rand_a);
     auto product_p = prot->A2P(product_a);
-
     auto rand_p = prot->A2P(rand_a);
+    EXPECT_EQ(prot->DelayCheck(), true);
+
     auto check = std::reduce(rand_p.begin(), rand_p.end(), PTy(1), PTy::Mul);
 
     EXPECT_EQ(product_p.size(), 1);
@@ -373,12 +390,14 @@ TEST(ProtocolTest, SetATest) {
     auto rand = OP::Rand(num);
     auto ret_a = prot->SetA(rand);
     [[maybe_unused]] auto ret_p = prot->A2P(ret_a);
+    EXPECT_EQ(prot->DelayCheck(), true);
     return rand;
   });
   auto rank1 = std::async([&] {
     auto prot = context[1]->GetState<Protocol>();
     auto ret_a = prot->GetA(num);
     auto ret_p = prot->A2P(ret_a);
+    EXPECT_EQ(prot->DelayCheck(), true);
     return ret_p;
   });
   auto r_b = rank0.get();
@@ -395,12 +414,14 @@ TEST(ProtocolTest, ZeroOneATest) {
     auto prot = context[0]->GetState<Protocol>();
     auto ret_a = prot->ZeroOneA(num);
     auto ret_p = prot->A2P(ret_a);
+    EXPECT_EQ(prot->DelayCheck(), true);
     return ret_p;
   });
   auto rank1 = std::async([&] {
     auto prot = context[1]->GetState<Protocol>();
     auto ret_a = prot->ZeroOneA(num);
     auto ret_p = prot->A2P(ret_a);
+    EXPECT_EQ(prot->DelayCheck(), true);
     return ret_p;
   });
   auto r_b = rank0.get();
@@ -427,6 +448,7 @@ TEST(ProtocolTest, ScalarMulTest) {
         prot->ScalarMulPA(rand_p[num], absl::MakeSpan(rand_a).subspan(0, num));
     auto p0 = prot->A2P(ret0);
     auto p1 = prot->A2P(ret1);
+    EXPECT_EQ(prot->DelayCheck(), true);
 
     for (size_t i = 0; i < num; ++i) {
       EXPECT_EQ(p0[i], p1[i]);
@@ -443,6 +465,7 @@ TEST(ProtocolTest, ScalarMulTest) {
         prot->ScalarMulPA(rand_p[num], absl::MakeSpan(rand_a).subspan(0, num));
     auto p0 = prot->A2P(ret0);
     auto p1 = prot->A2P(ret1);
+    EXPECT_EQ(prot->DelayCheck(), true);
 
     for (size_t i = 0; i < num; ++i) {
       EXPECT_EQ(p0[i], p1[i]);
@@ -459,12 +482,14 @@ TEST(ProtocolTest, FairnessTest) {
     auto prot = context[0]->GetState<Protocol>();
     auto [rand_a, bits] = prot->RandFairA(num);
     auto rand_p = prot->FairA2P(rand_a, bits);
+    EXPECT_EQ(prot->DelayCheck(), true);
     return rand_p;
   });
   auto rank1 = std::async([&] {
     auto prot = context[1]->GetState<Protocol>();
     auto [rand_a, bits] = prot->RandFairA(num);
     auto rand_p = prot->FairA2P(rand_a, bits);
+    EXPECT_EQ(prot->DelayCheck(), true);
     return rand_p;
   });
   auto r0 = rank0.get();

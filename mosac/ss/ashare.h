@@ -104,6 +104,11 @@ std::vector<PTy> A2P(std::shared_ptr<Context>& ctx, absl::Span<const ATy> in);
 std::vector<PTy> A2P_cache(std::shared_ptr<Context>& ctx,
                            absl::Span<const ATy> in);
 
+std::vector<PTy> A2P_delay(std::shared_ptr<Context>& ctx,
+                           absl::Span<const ATy> in);
+std::vector<PTy> A2P_delay_cache(std::shared_ptr<Context>& ctx,
+                                 absl::Span<const ATy> in);
+
 std::vector<ATy> P2A(std::shared_ptr<Context>& ctx, absl::Span<const PTy> in);
 std::vector<ATy> P2A_cache(std::shared_ptr<Context>& ctx,
                            absl::Span<const PTy> in);

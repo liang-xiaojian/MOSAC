@@ -65,6 +65,7 @@ auto OSS(const std::shared_ptr<yacl::link::Context> &lctx, size_t num,
 
   TIMER_N_COMM_START(OSS_online);
   auto shuffle = prot->SShuffleA(shares);
+  YACL_ENFORCE(prot->DelayCheck());
   TIMER_N_COMM_END_PRINT(OSS_online);
 
   auto result = prot->A2P(shuffle);
