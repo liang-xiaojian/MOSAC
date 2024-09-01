@@ -89,6 +89,14 @@ RegSi(Inv);
 RegConvert(A, P);
 RegConvert(P, A);
 
+std::vector<PTy> Protocol::A2P_delay(absl::Span<const ATy> in, bool cache) {
+  if (cache) {
+    return internal::A2P_delay_cache(ctx_, in);
+  }
+  // Special
+  return internal::A2P_delay(ctx_, in);
+}
+
 std::vector<PTy> Protocol::ZerosP(size_t num, bool cache) {
   if (cache) {
     return internal::ZerosP_cache(ctx_, num);
@@ -270,6 +278,31 @@ std::vector<PTy> Protocol::FairA2P(absl::Span<const ATy> in,
     return internal::FairA2P_cache(ctx_, in, bits);
   }
   return internal::FairA2P(ctx_, in, bits);
+}
+
+void Protocol::CheckBufferAppend(absl::Span<const PTy> in) {
+  std::copy(in.begin(), in.end(), std::back_inserter(check_buff_));
+}
+void Protocol::CheckBufferAppend(const PTy& in) {
+  check_buff_.emplace_back(in);
+}
+
+bool Protocol::DelayCheck() {
+  if (check_buff_.size() == 0) {
+    return true;
+  }
+  auto conn = ctx_->GetConnection();
+
+  auto hash_val = yacl::crypto::Sm3(yacl::ByteContainerView(
+      check_buff_.data(), check_buff_.size() * sizeof(internal::PTy)));
+  check_buff_.clear();
+
+  auto remote_hash_val = conn->ExchangeWithCommit(
+      yacl::ByteContainerView(hash_val.data(), hash_val.size()));
+  auto flag = (yacl::ByteContainerView(hash_val.data(), hash_val.size()) ==
+               yacl::ByteContainerView(remote_hash_val));
+  SPDLOG_INFO("delay check result: {} ", flag);
+  return flag;
 }
 
 }  // namespace mosac

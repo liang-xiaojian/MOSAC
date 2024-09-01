@@ -63,8 +63,16 @@ std::vector<ATy> MulAA(std::shared_ptr<Context>& ctx, absl::Span<const ATy> lhs,
   auto [a, b, c] = ctx->GetState<Correlation>()->BeaverTriple(size);
   auto u = SubAA(ctx, lhs, a);  // x-a
   auto v = SubAA(ctx, rhs, b);  // y-b
-  auto u_p = A2P(ctx, u);
-  auto v_p = A2P(ctx, v);
+
+  // uv appending
+  std::copy(v.begin(), v.end(), std::back_inserter(u));
+  auto& uv = u;  // rename
+  auto uv_p = A2P_delay(ctx, uv);
+
+  auto u_p = absl::MakeConstSpan(uv_p).subspan(0, size);
+  auto v_p = absl::MakeConstSpan(uv_p).subspan(size, size);
+  // auto u_p = A2P_delay(ctx, u);
+  // auto v_p = A2P_delay(ctx, v);
 
   // ret = c + x(y-b) + (x-a)y - (x-a)(y-b)
   auto xyb = MulAP(ctx, lhs, v_p);
@@ -89,8 +97,13 @@ std::vector<ATy> MulAA_cache([[maybe_unused]] std::shared_ptr<Context>& ctx,
   std::vector<ATy> c(size);
   auto u = SubAA_cache(ctx, lhs, a);  // x-a
   auto v = SubAA_cache(ctx, rhs, b);  // y-b
-  auto u_p = A2P_cache(ctx, u);
-  auto v_p = A2P_cache(ctx, v);
+
+  std::copy(v.begin(), v.end(), std::back_inserter(u));
+  auto& uv = u;  // rename
+  auto uv_p = A2P_delay_cache(ctx, uv);
+
+  auto u_p = absl::MakeConstSpan(uv_p).subspan(0, size);
+  auto v_p = absl::MakeConstSpan(uv_p).subspan(size, size);
 
   // ret = c + x(y-b) + (x-a)y - (x-a)(y-b)
   auto xyb = MulAP_cache(ctx, lhs, v_p);
@@ -143,7 +156,7 @@ std::vector<ATy> InvA(std::shared_ptr<Context>& ctx, absl::Span<const ATy> in) {
   // r * in
   auto mul = MulAA(ctx, absl::MakeConstSpan(r), absl::MakeConstSpan(in));
   // reveal r * in
-  auto pub = A2P(ctx, absl::MakeConstSpan(mul));
+  auto pub = A2P_delay(ctx, absl::MakeConstSpan(mul));
   // inv = (r * in)^{-1}
   auto inv = InvP(ctx, absl::MakeConstSpan(pub));
   // r * inv = in^{-1}
@@ -158,7 +171,7 @@ std::vector<ATy> InvA_cache(std::shared_ptr<Context>& ctx,
   // r * in
   auto mul = MulAA_cache(ctx, absl::MakeConstSpan(r), absl::MakeConstSpan(in));
   // reveal r * in
-  auto pub = A2P_cache(ctx, absl::MakeConstSpan(mul));
+  auto pub = A2P_delay_cache(ctx, absl::MakeConstSpan(mul));
   // inv = (r * in)^{-1}
   auto inv = InvP_cache(ctx, absl::MakeConstSpan(pub));
   // r * inv = in^{-1}
@@ -332,7 +345,6 @@ std::vector<ATy> DivPA_cache(std::shared_ptr<Context>& ctx,
 // --------------- Conversion ------------------
 
 std::vector<PTy> A2P(std::shared_ptr<Context>& ctx, absl::Span<const ATy> in) {
-  // TEST ME: whether is secure enough ???
   const size_t size = in.size();
   auto [val, mac] = Unpack(absl::MakeSpan(in));
   auto conn = ctx->GetState<Connection>();
@@ -359,9 +371,14 @@ std::vector<PTy> A2P(std::shared_ptr<Context>& ctx, absl::Span<const ATy> in) {
   return real_val;
 }
 
-std::vector<PTy> A2P_cache(std::shared_ptr<Context>& ctx,
+std::vector<PTy> A2P_cache([[maybe_unused]] std::shared_ptr<Context>& ctx,
                            absl::Span<const ATy> in) {
-  // TEST ME: whether is secure enough ???
+  const size_t size = in.size();
+  return std::vector<PTy>(size, 0);
+}
+
+std::vector<PTy> A2P_delay(std::shared_ptr<Context>& ctx,
+                           absl::Span<const ATy> in) {
   const size_t size = in.size();
   auto [val, mac] = Unpack(absl::MakeSpan(in));
   auto conn = ctx->GetState<Connection>();
@@ -372,20 +389,48 @@ std::vector<PTy> A2P_cache(std::shared_ptr<Context>& ctx,
   op::Add(absl::MakeConstSpan(reinterpret_cast<const PTy*>(buf.data()), size),
           absl::MakeConstSpan(val), absl::MakeSpan(real_val));
 
-  // Generate Sync Seed After Open Value
-  auto sync_seed = conn->SyncSeed();
-  auto coef = op::Rand(sync_seed, size);
+  typedef decltype(std::declval<internal::PTy>().GetVal()) INTEGER;
+
+  std::vector<INTEGER> randomness(size, 0);
+  std::transform(randomness.begin(), randomness.end(),
+                 reinterpret_cast<INTEGER*>(val.data()), randomness.begin(),
+                 std::bit_xor<INTEGER>());
+  std::transform(randomness.begin(), randomness.end(),
+                 reinterpret_cast<INTEGER*>(buf.data()), randomness.begin(),
+                 std::bit_xor<INTEGER>());
+  std::transform(randomness.begin(), randomness.end(),
+                 reinterpret_cast<INTEGER*>(real_val.data()),
+                 randomness.begin(), std::bit_xor<INTEGER>());
+
+  auto seeds = yacl::crypto::Sm3(yacl::ByteContainerView(
+      randomness.data(), randomness.size() * sizeof(INTEGER)));
+  uint128_t sync_seed = 0;
+  std::memcpy(&seeds, &sync_seed, sizeof(uint128_t));
+
+  auto coef = internal::op::Rand(sync_seed, size);
+
   // linear combination
   auto real_val_affine =
-      op::InPro(absl::MakeSpan(coef), absl::MakeSpan(real_val));
-  auto mac_affine = op::InPro(absl::MakeSpan(coef), absl::MakeSpan(mac));
+      internal::op::InPro(absl::MakeSpan(coef), absl::MakeSpan(real_val));
+  auto mac_affine =
+      internal::op::InPro(absl::MakeSpan(coef), absl::MakeSpan(mac));
 
   auto key = ctx->GetState<Protocol>()->GetKey();
   auto zero_mac = mac_affine - real_val_affine * key;
 
-  auto remote_mac_int = conn->ExchangeWithCommit(zero_mac.GetVal());
-  YACL_ENFORCE(zero_mac + PTy(remote_mac_int) == PTy::Zero());
+  // Append to Buffer
+  if (ctx->GetRank() == 0) {
+    ctx->GetState<Protocol>()->CheckBufferAppend(zero_mac);
+  } else {
+    ctx->GetState<Protocol>()->CheckBufferAppend(PTy::Neg(zero_mac));
+  }
   return real_val;
+}
+
+std::vector<PTy> A2P_delay_cache([[maybe_unused]] std::shared_ptr<Context>& ctx,
+                                 absl::Span<const ATy> in) {
+  const size_t size = in.size();
+  return std::vector<PTy>(size, 0);
 }
 
 std::vector<ATy> P2A(std::shared_ptr<Context>& ctx, absl::Span<const PTy> in) {
@@ -659,7 +704,7 @@ std::vector<ATy> SShuffleASet(std::shared_ptr<Context>& ctx,
 
   auto [perm, _a, _b] = cr->ASTSet(num);
   auto mask_A = SubAA(ctx, absl::MakeConstSpan(in), absl::MakeConstSpan(_a));
-  auto mask_P = A2P(ctx, absl::MakeConstSpan(mask_A));
+  auto mask_P = A2P_delay(ctx, absl::MakeConstSpan(mask_A));
 
   auto shuffle_mask_P = ZerosP(ctx, num);
   for (size_t i = 0; i < num; ++i) {
@@ -681,7 +726,7 @@ std::vector<ATy> SShuffleASet(std::shared_ptr<Context>& ctx,
 
   auto rand_a = RandA(ctx, 1);  // mask
   auto check_zeros_mul = MulAA(ctx, check_zeros, rand_a);
-  auto zeros = A2P(ctx, check_zeros_mul);
+  auto zeros = A2P_delay(ctx, check_zeros_mul);
 
   YACL_ENFORCE(zeros.size() == 1 && zeros[0] == PTy(0));
 
@@ -697,7 +742,7 @@ std::vector<ATy> SShuffleASet_cache(std::shared_ptr<Context>& ctx,
   auto _a = ZerosA_cache(ctx, num);
   auto _b = ZerosA_cache(ctx, num);
   auto mask_A = SubAA_cache(ctx, absl::MakeSpan(in), absl::MakeConstSpan(_a));
-  auto mask_P = A2P_cache(ctx, absl::MakeConstSpan(mask_A));
+  auto mask_P = A2P_delay_cache(ctx, absl::MakeConstSpan(mask_A));
   auto c = SetA_cache(ctx, mask_P);
   auto ret = AddAA_cache(ctx, absl::MakeConstSpan(c), absl::MakeConstSpan(_b));
 
@@ -713,7 +758,7 @@ std::vector<ATy> SShuffleASet_cache(std::shared_ptr<Context>& ctx,
 
   auto rand_a = RandA_cache(ctx, 1);
   auto check_zeros_mul = MulAA_cache(ctx, check_zeros, rand_a);
-  [[maybe_unused]] auto zeros = A2P_cache(ctx, check_zeros_mul);
+  [[maybe_unused]] auto zeros = A2P_delay_cache(ctx, check_zeros_mul);
 
   return ret;
 }
@@ -725,7 +770,7 @@ std::vector<ATy> SShuffleAGet(std::shared_ptr<Context>& ctx,
 
   auto [_a, _b] = cr->ASTGet(num);
   auto mask_A = SubAA(ctx, absl::MakeConstSpan(in), absl::MakeConstSpan(_a));
-  auto mask_P = A2P(ctx, absl::MakeConstSpan(mask_A));
+  auto mask_P = A2P_delay(ctx, absl::MakeConstSpan(mask_A));
 
   auto c = GetA(ctx, num);
   auto ret = AddAA(ctx, absl::MakeConstSpan(c), absl::MakeConstSpan(_b));
@@ -742,7 +787,7 @@ std::vector<ATy> SShuffleAGet(std::shared_ptr<Context>& ctx,
 
   auto rand_a = RandA(ctx, 1);  // mask
   auto check_zeros_mul = MulAA(ctx, check_zeros, rand_a);
-  auto zeros = A2P(ctx, check_zeros_mul);
+  auto zeros = A2P_delay(ctx, check_zeros_mul);
 
   YACL_ENFORCE(zeros.size() == 1 && zeros[0] == PTy(0));
 
@@ -759,7 +804,7 @@ std::vector<ATy> SShuffleAGet_cache(std::shared_ptr<Context>& ctx,
   auto _b = ZerosA_cache(ctx, num);
   auto mask_A =
       SubAA_cache(ctx, absl::MakeConstSpan(in), absl::MakeConstSpan(_a));
-  auto mask_P = A2P_cache(ctx, absl::MakeConstSpan(mask_A));
+  auto mask_P = A2P_delay_cache(ctx, absl::MakeConstSpan(mask_A));
 
   auto c = GetA_cache(ctx, num);
   auto ret = AddAA_cache(ctx, absl::MakeConstSpan(c), absl::MakeConstSpan(_b));
@@ -776,7 +821,7 @@ std::vector<ATy> SShuffleAGet_cache(std::shared_ptr<Context>& ctx,
 
   auto rand_a = RandA_cache(ctx, 1);
   auto check_zeros_mul = MulAA_cache(ctx, check_zeros, rand_a);
-  [[maybe_unused]] auto zeros = A2P_cache(ctx, check_zeros_mul);
+  [[maybe_unused]] auto zeros = A2P_delay_cache(ctx, check_zeros_mul);
 
   return ret;
 }
@@ -811,7 +856,7 @@ std::vector<ATy> NMulA(std::shared_ptr<Context>& ctx,
   auto [_r, _mul_inv] = cr->NMul(num);
   auto in_mul_r_A =
       MulAA(ctx, absl::MakeConstSpan(in), absl::MakeConstSpan(_r));
-  auto in_mul_r_P = A2P(ctx, in_mul_r_A);
+  auto in_mul_r_P = A2P_delay(ctx, in_mul_r_A);
 
   auto product =
       std::reduce(in_mul_r_P.begin(), in_mul_r_P.end(), PTy(1), PTy::Mul);
@@ -831,7 +876,7 @@ std::vector<ATy> NMulA_cache(std::shared_ptr<Context>& ctx,
   std::vector<ATy> _r(num, {PTy(0), PTy(0)});
   auto in_mul_r_A =
       MulAA_cache(ctx, absl::MakeConstSpan(in), absl::MakeConstSpan(_r));
-  [[maybe_unused]] auto in_mul_r_P = A2P_cache(ctx, in_mul_r_A);
+  [[maybe_unused]] auto in_mul_r_P = A2P_delay_cache(ctx, in_mul_r_A);
 
   std::vector<ATy> lhs = {
       ATy{PTy(1), PTy(ctx->GetState<Protocol>()->GetKey())}};
@@ -944,7 +989,7 @@ std::vector<ATy> ZeroOneA(std::shared_ptr<Context>& ctx, size_t num) {
   // s = r * r
   auto s = MulAA(ctx, r, r);
   // reveal s
-  auto p = A2P(ctx, s);
+  auto p = A2P_delay(ctx, s);
   auto root = op::Sqrt(absl::MakeSpan(p));
 
   auto tmp = DivAP(ctx, r, root);
@@ -960,7 +1005,7 @@ std::vector<ATy> ZeroOneA_cache(std::shared_ptr<Context>& ctx, size_t num) {
   // s = r * r
   auto s = MulAA_cache(ctx, r, r);
   // reveal s
-  auto p = A2P_cache(ctx, s);
+  auto p = A2P_delay_cache(ctx, s);
   auto root = op::Sqrt(absl::MakeSpan(p));
 
   auto tmp = DivAP_cache(ctx, r, root);
@@ -1048,7 +1093,7 @@ std::vector<PTy> FairA2P(std::shared_ptr<Context>& ctx,
   std::vector<PTy> ret(num, PTy::Zero());
   auto scalar = PTy::One();
   for (size_t i = 0; i < sizeof(INTEGER) * 8; ++i) {
-    auto bits_p = A2P(ctx, bits.subspan(num * i, num));
+    auto bits_p = A2P_delay(ctx, bits.subspan(num * i, num));
     for (const auto& bit_p : bits_p) {
       YACL_ENFORCE(bit_p == PTy::One() || bit_p == PTy::Zero());
     }
@@ -1058,7 +1103,7 @@ std::vector<PTy> FairA2P(std::shared_ptr<Context>& ctx,
   }
 
   auto check = SubAP(ctx, in, ret);
-  auto zeros = A2P(ctx, check);
+  auto zeros = A2P_delay(ctx, check);
   for (const auto& zero : zeros) {
     YACL_ENFORCE(zero == PTy::Zero());
   }
@@ -1075,11 +1120,12 @@ std::vector<PTy> FairA2P_cache(std::shared_ptr<Context>& ctx,
 
   std::vector<PTy> ret(num, PTy::Zero());
   for (size_t i = 0; i < sizeof(INTEGER) * 8; ++i) {
-    [[maybe_unused]] auto bits_p = A2P_cache(ctx, bits.subspan(num * i, num));
+    [[maybe_unused]] auto bits_p =
+        A2P_delay_cache(ctx, bits.subspan(num * i, num));
   }
 
   auto check = SubAP_cache(ctx, in, ret);
-  [[maybe_unused]] auto zeros = A2P_cache(ctx, check);
+  [[maybe_unused]] auto zeros = A2P_delay_cache(ctx, check);
   return ret;
 }
 

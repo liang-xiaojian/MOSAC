@@ -25,6 +25,8 @@ class Protocol : public State {
   std::shared_ptr<Context> ctx_;
   // SPDZ key
   PTy key_;
+  // check buffer
+  std::vector<PTy> check_buff_;
 
  public:
   static const std::string id;
@@ -77,11 +79,9 @@ class Protocol : public State {
                        bool cache = false);
 
   // convert
+  std::vector<PTy> A2P_delay(absl::Span<const ATy> in, bool cache = false);
   std::vector<PTy> A2P(absl::Span<const ATy> in, bool cache = false);
   std::vector<ATy> P2A(absl::Span<const PTy> in, bool cache = false);
-  // std::vector<MTy> A2M(absl::Span<const ATy> in, bool cache = false);
-  // std::vector<GTy> M2G(absl::Span<const MTy> in, bool cache = false);
-  // std::vector<GTy> A2G(absl::Span<const ATy> in, bool cache = false);
 
   // others
   std::vector<PTy> Inv(absl::Span<const PTy> in, bool cache = false);
@@ -141,6 +141,11 @@ class Protocol : public State {
                                bool cache = false);
   std::vector<PTy> ScalarMulPP(const PTy& scalar, absl::Span<const PTy> in,
                                bool cache = false);
+
+  // check buffer
+  void CheckBufferAppend(absl::Span<const PTy> in);
+  void CheckBufferAppend(const PTy& in);
+  bool DelayCheck();
 };
 
 }  // namespace mosac
