@@ -63,3 +63,20 @@ command line flags
 --small_power               --> T = 2^{small_power}, used in AST2k 
 --big_power                 --> size of shuffle elements = 2^{big_power}, used in AST2k
 ```
+
+### About Dockerfile
+```sh
+# build docker image to solve dependency
+docker build -t mosac:latest .   
+# create container
+docker run -it --name mosac-dev --cap-add=NET_ADMIN --privileged=true mosac:latest bash
+# build all && unit test
+bazel test -c opt //...
+```
+
+```sh
+# re-enter container or stop it
+docker start mosac-dev          # start 
+docker exec -it mosac-dev bash  # launch the terminal
+docker stop mosac-dev           # stop
+```

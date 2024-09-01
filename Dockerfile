@@ -1,6 +1,6 @@
 FROM ubuntu
 
-WORKDIR /app
+WORKDIR /MOSAC
 
 # install dependency
 RUN apt-get update
@@ -11,7 +11,7 @@ RUN npm install -g @bazel/bazelisk
 RUN alias bazel='bazelisk'
 
 # copy source code
-COPY . /app
+COPY . /MOSAC
 
 # It would complie and run all unit-test
-RUN bazel test -c opt //...
+# RUN bazel test -c opt //...
