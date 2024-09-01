@@ -7,8 +7,6 @@ mosac_cc_library(
     hdrs = ["type.h"],
     deps = [
         "@yacl//yacl/math/mpint",
-        "@yacl//yacl/utils/spi:spi",
-        "@yacl//yacl/crypto/base/ecc",
         "//mosac/utils:vec_op",
         "//mosac/utils:field",
     ],

@@ -1,10 +1,7 @@
 #pragma once
 #include "mosac/utils/field.h"
 #include "mosac/utils/vec_op.h"
-#include "yacl/crypto/base/ecc/ecc_spi.h"
-#include "yacl/crypto/base/ecc/openssl/openssl_group.h"
 #include "yacl/math/mpint/mp_int.h"
-#include "yacl/utils/spi/spi_factory.h"
 
 namespace mosac::internal {
 
@@ -24,24 +21,12 @@ namespace yc = yacl::crypto;
 using PTy = kFp64;
 using op = op64;
 
-// using GTy = yc::EcPoint;
-
-// static auto Ggroup = yc::EcGroupFactory::Instance().Create(
-//     "secp128r2", yacl::ArgLib = "openssl");
-// static auto Ggroup =
-//     yc::openssl::OpensslGroup::Create(yc::GetCurveMetaByName("secp128r2"));
-
 #pragma pack(8)
 // Distribute PTy with Mac (additive share)
 struct ATy {
   PTy val;
   PTy mac;
 };
-// Distribute GTy with Mac (multiplicative share)
-// struct MTy {
-//   GTy val;
-//   GTy mac;
-// };
 #pragma pack()
 
 void inline Pack(absl::Span<const PTy> val, absl::Span<const PTy> mac,
