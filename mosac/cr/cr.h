@@ -148,9 +148,18 @@ class Correlation : public State {
                       absl::Span<internal::ATy> b) = 0;
   virtual internal::ATy NMul(absl::Span<internal::ATy> r) = 0;
 
+  // solve the case for ndss shuffle (offline benchmark currently)
+  virtual void BatchShuffleSet(
+      size_t batch_num, size_t per_size, size_t repeat,
+      const std::vector<std::vector<size_t>>& perms,
+      std::vector<std::vector<internal::PTy>>& vec_delta) = 0;
+  virtual void BatchShuffleGet(
+      size_t batch_num, size_t per_size, size_t repeat,
+      std::vector<std::vector<internal::PTy>>& vec_a,
+      std::vector<std::vector<internal::PTy>>& vec_b) = 0;
+  // solve the case for 2^k (offline benchmark currently)
   virtual std::vector<size_t> ASTSet_2k(size_t T, absl::Span<internal::ATy> a,
                                         absl::Span<internal::ATy> b) = 0;
-
   virtual void ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
                          absl::Span<internal::ATy> b) = 0;
 
@@ -167,6 +176,12 @@ class Correlation : public State {
   ASTGTy ASTGet(size_t num);
   NMulTy NMul(size_t num);
 
+  // solve the case for ndss shuffle (offline benchmark currently)
+  std::vector<ShuffleSTy> BatchShuffleSet(size_t batch_num, size_t per_size,
+                                          size_t repeat = 1);
+  std::vector<ShuffleGTy> BatchShuffleGet(size_t batch_num, size_t per_size,
+                                          size_t repeat = 1);
+  // solve the case for 2^k (offline benchmark currently)
   ASTSTy ASTSet_2k(size_t T, size_t num);
   ASTGTy ASTGet_2k(size_t T, size_t num);
 
@@ -221,6 +236,11 @@ class Correlation : public State {
                    const std::vector<uint64_t>& ast_set_shape = {},
                    const std::vector<uint64_t>& ast_get_shape = {},
                    const std::vector<uint64_t>& n_mul_shape = {});
+
+  inline std::vector<uint64_t> GetASTSetShape() const { return ast_s_shape_; }
+  inline std::vector<uint64_t> GetASTGetShape() const { return ast_g_shape_; }
+  inline std::vector<uint64_t> GetShuffleSetShape() const { return s_s_shape_; }
+  inline std::vector<uint64_t> GetShuffleGetShape() const { return s_g_shape_; }
 };
 
 struct CorrelationCache {

@@ -109,6 +109,36 @@ ASTGTy Correlation::ASTGet(size_t num) {
   return ASTGTy(std::move(a), std::move(b));
 }
 
+std::vector<ShuffleSTy> Correlation::BatchShuffleSet(size_t batch_num,
+                                                     size_t per_size,
+                                                     size_t repeat) {
+  std::vector<std::vector<size_t>> perms;
+  for (size_t i = 0; i < batch_num; ++i) {
+    auto perm = GenPerm(per_size);
+    perms.emplace_back(std::move(perm));
+  }
+  std::vector<std::vector<internal::PTy>> vec_delta;
+  BatchShuffleSet(batch_num, per_size, repeat, perms, vec_delta);
+
+  std::vector<ShuffleSTy> ret;
+  for (size_t i = 0; i < batch_num; ++i) {
+    ret.emplace_back(std::move(vec_delta[i]), std::move(perms[i]));
+  }
+  return ret;
+}
+std::vector<ShuffleGTy> Correlation::BatchShuffleGet(size_t batch_num,
+                                                     size_t per_size,
+                                                     size_t repeat) {
+  std::vector<std::vector<internal::PTy>> vec_a;
+  std::vector<std::vector<internal::PTy>> vec_b;
+  BatchShuffleGet(batch_num, per_size, repeat, vec_a, vec_b);
+  std::vector<ShuffleGTy> ret;
+  for (size_t i = 0; i < batch_num; ++i) {
+    ret.emplace_back(std::move(vec_a[i]), std::move(vec_b[i]));
+  }
+  return ret;
+}
+
 ASTSTy Correlation::ASTSet_2k(size_t T, size_t num) {
   std::vector<internal::ATy> a(num);
   std::vector<internal::ATy> b(num);

@@ -176,34 +176,31 @@ std::vector<ATy> Protocol::ShuffleAGet(absl::Span<const ATy> in, bool cache) {
   return internal::ShuffleAGet(ctx_, in);
 }
 
-std::array<std::vector<ATy>, 2> Protocol::ShuffleA(absl::Span<const ATy> in0,
-                                                   absl::Span<const ATy> in1,
-                                                   bool cache) {
+// NDSS shuffle
+std::vector<ATy> Protocol::ShuffleA_2k(size_t T, absl::Span<const ATy> in,
+                                       bool cache) {
   if (cache) {
-    return internal::ShuffleA_cache(ctx_, in0, in1);
+    return internal::ShuffleA_2k_cache(ctx_, T, in);
   }
-  return internal::ShuffleA(ctx_, in0, in1);
+  return internal::ShuffleA_2k(ctx_, T, in);
 }
 
-std::array<std::vector<ATy>, 2> Protocol::ShuffleASet(absl::Span<const ATy> in0,
-                                                      absl::Span<const ATy> in1,
-                                                      bool cache) {
+std::vector<ATy> Protocol::ShuffleASet_2k(size_t T, absl::Span<const ATy> in,
+                                          bool cache) {
   if (cache) {
-    return internal::ShuffleASet_cache(ctx_, in0, in1);
+    return internal::ShuffleASet_2k_cache(ctx_, T, in);
   }
-  return internal::ShuffleASet(ctx_, in0, in1);
+  return internal::ShuffleASet_2k(ctx_, T, in);
+}
+std::vector<ATy> Protocol::ShuffleAGet_2k(size_t T, absl::Span<const ATy> in,
+                                          bool cache) {
+  if (cache) {
+    return internal::ShuffleAGet_2k_cache(ctx_, T, in);
+  }
+  return internal::ShuffleAGet_2k(ctx_, T, in);
 }
 
-std::array<std::vector<ATy>, 2> Protocol::ShuffleAGet(absl::Span<const ATy> in0,
-                                                      absl::Span<const ATy> in1,
-                                                      bool cache) {
-  if (cache) {
-    return internal::ShuffleAGet_cache(ctx_, in0, in1);
-  }
-  return internal::ShuffleAGet(ctx_, in0, in1);
-}
-
-// sshufle
+// secure shuffle
 std::vector<ATy> Protocol::SShuffleA(absl::Span<const ATy> in, bool cache) {
   if (cache) {
     return internal::SShuffleA_cache(ctx_, in);
@@ -280,9 +277,67 @@ std::vector<PTy> Protocol::FairA2P(absl::Span<const ATy> in,
   return internal::FairA2P(ctx_, in, bits);
 }
 
+void Protocol::NdssBufferAppend(absl::Span<const ATy> in) {
+  auto [in_val, in_mac] = Unpack(in);
+  ndss_val_buff_.emplace_back(std::move(in_val));
+  ndss_mac_buff_.emplace_back(std::move(in_mac));
+}
+
+void Protocol::NdssBufferAppend(const ATy& in) {
+  std::vector<ATy> in_vec(1, in);
+  NdssBufferAppend(absl::MakeConstSpan(in_vec));
+}
+
+bool Protocol::NdssDelayCheck() {
+  YACL_ENFORCE(ndss_val_buff_.size() == ndss_mac_buff_.size());
+  if (ndss_val_buff_.size() == 0) {
+    return true;
+  }
+  const size_t seed_len = ndss_val_buff_.size();
+
+  auto conn = ctx_->GetConnection();
+  auto sync_seed = conn->SyncSeed();
+
+  auto prg = yacl::crypto::Prg<uint128_t>(sync_seed);
+  std::vector<uint128_t> ext_seed(seed_len);
+  prg.Fill(absl::MakeSpan(ext_seed));
+
+  auto r = RandA(1);
+  auto& r_val = r[0].val;
+  auto& r_mac = r[0].mac;
+
+  for (size_t i = 0; i < seed_len; ++i) {
+    YACL_ENFORCE(ndss_val_buff_[i].size() == ndss_mac_buff_[i].size());
+
+    auto cur_len = ndss_val_buff_[i].size();
+    auto coef = internal::op::Rand(ext_seed[i], cur_len);
+    auto val_affine = internal::op::InPro(absl::MakeSpan(coef),
+                                          absl::MakeSpan(ndss_val_buff_[i]));
+    auto mac_affine = internal::op::InPro(absl::MakeSpan(coef),
+                                          absl::MakeSpan(ndss_mac_buff_[i]));
+    r_val = r_val + val_affine;
+    r_mac = r_mac + mac_affine;
+  }
+
+  auto remote_r_val = conn->Exchange(r_val.GetVal());
+  auto real_val = r_val + PTy(remote_r_val);
+  auto zero_mac = r_mac - real_val * key_;
+
+  if (ctx_->GetRank() == 0) {
+    zero_mac = PTy::Neg(zero_mac);
+  }
+
+  auto bv = yacl::ByteContainerView(&zero_mac, sizeof(PTy));
+  auto remote_bv = conn->ExchangeWithCommit(bv);
+  bool flag = (bv == yacl::ByteContainerView(remote_bv));
+  SPDLOG_INFO("NdssDelayCheck is {}", flag);
+  return flag;
+}
+
 void Protocol::CheckBufferAppend(absl::Span<const PTy> in) {
   std::copy(in.begin(), in.end(), std::back_inserter(check_buff_));
 }
+
 void Protocol::CheckBufferAppend(const PTy& in) {
   check_buff_.emplace_back(in);
 }

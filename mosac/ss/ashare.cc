@@ -462,35 +462,79 @@ std::vector<ATy> P2A_cache(std::shared_ptr<Context>& ctx,
   return Pack(absl::MakeSpan(zero_val), absl::MakeSpan(zero_mac));
 }
 
-// --------------- Shuffle ------------------
+// --------------- Shuffle Internal ---------------
+std::vector<ATy> ShuffleAGet_internal(std::shared_ptr<Context>& ctx,
+                                      absl::Span<const ATy> in,
+                                      absl::Span<const PTy> ext_a,
+                                      absl::Span<const PTy> ext_b) {
+  const size_t num = in.size();
+  YACL_ENFORCE(ext_a.size() == 2 * num);
+  YACL_ENFORCE(ext_b.size() == 2 * num);
 
+  auto val_a = ext_a.subspan(0, num);
+  auto val_b = ext_b.subspan(0, num);
+  auto mac_a = ext_a.subspan(num, num);
+  auto mac_b = ext_b.subspan(num, num);
+
+  auto [val_in, mac_in] = Unpack(absl::MakeConstSpan(in));
+
+  auto val_tmp = op::Add(absl::MakeSpan(val_a), absl::MakeConstSpan(val_in));
+  auto mac_tmp = op::Add(absl::MakeSpan(mac_a), absl::MakeConstSpan(mac_in));
+
+  auto conn = ctx->GetConnection();
+  conn->SendAsync(
+      ctx->NextRank(),
+      yacl::ByteContainerView(val_tmp.data(), val_tmp.size() * sizeof(PTy)),
+      "send:a+x val");
+  conn->SendAsync(
+      ctx->NextRank(),
+      yacl::ByteContainerView(mac_tmp.data(), mac_tmp.size() * sizeof(PTy)),
+      "send:a+x mac");
+
+  return Pack(absl::MakeConstSpan(val_b), absl::MakeConstSpan(mac_b));
+}
+
+std::vector<ATy> ShuffleASet_internal(std::shared_ptr<Context>& ctx,
+                                      absl::Span<const ATy> in,
+                                      absl::Span<const size_t> perm,
+                                      absl::Span<const PTy> ext_delta) {
+  const size_t num = in.size();
+  YACL_ENFORCE(perm.size() == num);
+  YACL_ENFORCE(ext_delta.size() == 2 * num);
+
+  auto val_delta = ext_delta.subspan(0, num);
+  auto mac_delta = ext_delta.subspan(num, num);
+
+  auto conn = ctx->GetConnection();
+  auto val_buf = conn->Recv(ctx->NextRank(), "send:a");
+  auto mac_buf = conn->Recv(ctx->NextRank(), "send:b");
+
+  auto val_tmp = absl::MakeSpan(reinterpret_cast<PTy*>(val_buf.data()), num);
+  auto mac_tmp = absl::MakeSpan(reinterpret_cast<PTy*>(mac_buf.data()), num);
+
+  auto [val_in, mac_in] = Unpack(absl::MakeConstSpan(in));
+  // val_tmp += val_in
+  op::AddInplace(absl::MakeSpan(val_tmp), absl::MakeConstSpan(val_in));
+  // mac_tmp += mac_in
+  op::AddInplace(absl::MakeSpan(mac_tmp), absl::MakeConstSpan(mac_in));
+
+  std::vector<PTy> val_out(num);
+  std::vector<PTy> mac_out(num);
+  for (size_t i = 0; i < num; ++i) {
+    val_out[i] = val_delta[i] + val_tmp[perm[i]];
+    mac_out[i] = mac_delta[i] + mac_tmp[perm[i]];
+  }
+  return Pack(absl::MakeConstSpan(val_out), absl::MakeConstSpan(mac_out));
+}
+
+// --------------- Shuffle ---------------
 std::vector<ATy> ShuffleAGet(std::shared_ptr<Context>& ctx,
                              absl::Span<const ATy> in) {
   const size_t num = in.size();
   // correlation
   // [Warning] low efficiency!!! optimize it
-  auto [_a, _b] = ctx->GetState<Correlation>()->ShuffleGet(num, 2);
-  auto val_a = absl::MakeSpan(_a).subspan(0, num);
-  auto val_b = absl::MakeSpan(_b).subspan(0, num);
-  auto mac_a = absl::MakeSpan(_a).subspan(num, num);
-  auto mac_b = absl::MakeSpan(_b).subspan(num, num);
-
-  auto [val_in, mac_in] = Unpack(absl::MakeConstSpan(in));
-
-  op::AddInplace(absl::MakeSpan(val_a), absl::MakeConstSpan(val_in));
-  op::AddInplace(absl::MakeSpan(mac_a), absl::MakeConstSpan(mac_in));
-
-  auto conn = ctx->GetConnection();
-  conn->SendAsync(
-      ctx->NextRank(),
-      yacl::ByteContainerView(val_a.data(), val_a.size() * sizeof(PTy)),
-      "send:a+x val");
-  conn->SendAsync(
-      ctx->NextRank(),
-      yacl::ByteContainerView(mac_a.data(), mac_a.size() * sizeof(PTy)),
-      "send:a+x mac");
-
-  return Pack(absl::MakeConstSpan(val_b), absl::MakeConstSpan(mac_b));
+  auto [ext_a, ext_b] = ctx->GetState<Correlation>()->ShuffleGet(num, 2);
+  return ShuffleAGet_internal(ctx, in, ext_a, ext_b);
 }
 
 std::vector<ATy> ShuffleAGet_cache(std::shared_ptr<Context>& ctx,
@@ -507,28 +551,8 @@ std::vector<ATy> ShuffleASet(std::shared_ptr<Context>& ctx,
   const size_t num = in.size();
   // correlation
   // [Warning] low efficiency!!! optimize it
-  auto [_delta, perm] = ctx->GetState<Correlation>()->ShuffleSet(num, 2);
-  auto val_delta = absl::MakeSpan(_delta).subspan(0, num);
-  auto mac_delta = absl::MakeSpan(_delta).subspan(num, num);
-
-  auto conn = ctx->GetConnection();
-  auto val_buf = conn->Recv(ctx->NextRank(), "send:a");
-  auto mac_buf = conn->Recv(ctx->NextRank(), "send:b");
-
-  auto val_tmp = absl::MakeSpan(reinterpret_cast<PTy*>(val_buf.data()), num);
-  auto mac_tmp = absl::MakeSpan(reinterpret_cast<PTy*>(mac_buf.data()), num);
-
-  auto [val_in, mac_in] = Unpack(absl::MakeConstSpan(in));
-  // val_tmp += val_in
-  op::AddInplace(absl::MakeSpan(val_tmp), absl::MakeConstSpan(val_in));
-  // mac_tmp += mac_in
-  op::AddInplace(absl::MakeSpan(mac_tmp), absl::MakeConstSpan(mac_in));
-
-  for (size_t i = 0; i < num; ++i) {
-    val_delta[i] = val_delta[i] + val_tmp[perm[i]];
-    mac_delta[i] = mac_delta[i] + mac_tmp[perm[i]];
-  }
-  return Pack(absl::MakeConstSpan(val_delta), absl::MakeConstSpan(mac_delta));
+  auto [ext_delta, perm] = ctx->GetState<Correlation>()->ShuffleSet(num, 2);
+  return ShuffleASet_internal(ctx, in, perm, ext_delta);
 }
 
 std::vector<ATy> ShuffleASet_cache(std::shared_ptr<Context>& ctx,
@@ -560,140 +584,326 @@ std::vector<ATy> ShuffleA_cache(std::shared_ptr<Context>& ctx,
   return ShuffleASet_cache(ctx, tmp);
 }
 
-// shuffle inputs with same permuation
-std::array<std::vector<ATy>, 2> ShuffleAGet(std::shared_ptr<Context>& ctx,
-                                            absl::Span<const ATy> in0,
-                                            absl::Span<const ATy> in1) {
-  const size_t num = in0.size();
-  YACL_ENFORCE(in1.size() == num);
-  // correlation
-  // [Warning] low efficiency!!! optimize it
-  auto [_a, _b] = ctx->GetState<Correlation>()->ShuffleGet(num, 4);
-  auto val_a0 = absl::MakeSpan(_a).subspan(0 * num, num);
-  auto val_b0 = absl::MakeSpan(_b).subspan(0 * num, num);
-  auto mac_a0 = absl::MakeSpan(_a).subspan(1 * num, num);
-  auto mac_b0 = absl::MakeSpan(_b).subspan(1 * num, num);
+// --------------- NDSS Shuffle ---------------
+namespace {
+const std::map<size_t, size_t> kExtend4 = {
+    {1 << 4, 19},  {1 << 5, 17},  {1 << 6, 16},  {1 << 7, 16},  {1 << 8, 15},
+    {1 << 9, 14},  {1 << 10, 14}, {1 << 11, 14}, {1 << 12, 14}, {1 << 13, 13},
+    {1 << 14, 13}, {1 << 15, 13}, {1 << 16, 13}};
 
-  auto val_a1 = absl::MakeSpan(_a).subspan(2 * num, num);
-  auto val_b1 = absl::MakeSpan(_b).subspan(2 * num, num);
-  auto mac_a1 = absl::MakeSpan(_a).subspan(3 * num, num);
-  auto mac_b1 = absl::MakeSpan(_b).subspan(3 * num, num);
+const std::map<size_t, size_t> kExtend5 = {
+    {1 << 4, 17},  {1 << 5, 15},  {1 << 6, 14},  {1 << 7, 14},  {1 << 8, 14},
+    {1 << 9, 13},  {1 << 10, 13}, {1 << 11, 12}, {1 << 12, 12}, {1 << 13, 11},
+    {1 << 14, 11}, {1 << 15, 11}, {1 << 16, 11}};
 
-  auto [val_in0, mac_in0] = Unpack(absl::MakeConstSpan(in0));
-  auto [val_in1, mac_in1] = Unpack(absl::MakeConstSpan(in1));
+const std::map<size_t, size_t> kExtend6 = {
+    {1 << 4, 16},  {1 << 5, 14},  {1 << 6, 13},  {1 << 7, 13},  {1 << 8, 12},
+    {1 << 9, 12},  {1 << 10, 11}, {1 << 11, 11}, {1 << 12, 11}, {1 << 13, 10},
+    {1 << 14, 10}, {1 << 15, 10}, {1 << 16, 10}};
 
-  op::AddInplace(absl::MakeSpan(val_a0), absl::MakeConstSpan(val_in0));
-  op::AddInplace(absl::MakeSpan(mac_a0), absl::MakeConstSpan(mac_in0));
-  op::AddInplace(absl::MakeSpan(val_a1), absl::MakeConstSpan(val_in1));
-  op::AddInplace(absl::MakeSpan(mac_a1), absl::MakeConstSpan(mac_in1));
+const std::map<size_t, size_t> kExtend7 = {
+    {1 << 4, 15}, {1 << 5, 13},  {1 << 6, 12},  {1 << 7, 12},  {1 << 8, 11},
+    {1 << 9, 11}, {1 << 10, 10}, {1 << 11, 10}, {1 << 12, 10}, {1 << 13, 9},
+    {1 << 14, 9}, {1 << 15, 9},  {1 << 16, 9}};
 
-  auto conn = ctx->GetConnection();
-  conn->SendAsync(
-      ctx->NextRank(),
-      yacl::ByteContainerView(val_a0.data(), val_a0.size() * sizeof(PTy)),
-      "send:a+x val0");
-  conn->SendAsync(
-      ctx->NextRank(),
-      yacl::ByteContainerView(mac_a0.data(), mac_a0.size() * sizeof(PTy)),
-      "send:a+x mac0");
-  conn->SendAsync(
-      ctx->NextRank(),
-      yacl::ByteContainerView(val_a1.data(), val_a1.size() * sizeof(PTy)),
-      "send:a+x val1");
-  conn->SendAsync(
-      ctx->NextRank(),
-      yacl::ByteContainerView(mac_a1.data(), mac_a1.size() * sizeof(PTy)),
-      "send:a+x mac1");
+const std::map<size_t, size_t> kExtend8 = {
+    {1 << 4, 14}, {1 << 5, 12}, {1 << 6, 11}, {1 << 7, 11}, {1 << 8, 10},
+    {1 << 9, 10}, {1 << 10, 9}, {1 << 11, 9}, {1 << 12, 9}, {1 << 13, 8},
+    {1 << 14, 8}, {1 << 15, 8}, {1 << 16, 8}};
 
-  return {Pack(absl::MakeConstSpan(val_b0), absl::MakeConstSpan(mac_b0)),
-          Pack(absl::MakeConstSpan(val_b1), absl::MakeConstSpan(mac_b1))};
-}
+const std::map<size_t, size_t> kExtend9 = {
+    {1 << 4, 14}, {1 << 5, 12}, {1 << 6, 11}, {1 << 7, 11}, {1 << 8, 10},
+    {1 << 9, 10}, {1 << 10, 9}, {1 << 11, 9}, {1 << 12, 9}, {1 << 13, 8},
+    {1 << 14, 8}, {1 << 15, 8}, {1 << 16, 8}};
 
-std::array<std::vector<ATy>, 2> ShuffleAGet_cache(std::shared_ptr<Context>& ctx,
-                                                  absl::Span<const ATy> in0,
-                                                  absl::Span<const ATy> in1) {
-  const size_t num = in0.size();
-  YACL_ENFORCE(in1.size() == num);
-  // correlation
-  // [Warning] low efficiency!!! optimize it
-  ctx->GetState<Correlation>()->ShuffleGet_cache(num, 4);
-  return {std::vector<ATy>(num), std::vector<ATy>(num)};
-}
+const std::map<size_t, size_t> kExtend10 = {
+    {1 << 4, 12}, {1 << 5, 11}, {1 << 6, 10}, {1 << 7, 9},  {1 << 8, 9},
+    {1 << 9, 8},  {1 << 10, 8}, {1 << 11, 8}, {1 << 12, 8}, {1 << 13, 7},
+    {1 << 14, 7}, {1 << 15, 7}, {1 << 16, 7}};
 
-std::array<std::vector<ATy>, 2> ShuffleASet(std::shared_ptr<Context>& ctx,
-                                            absl::Span<const ATy> in0,
-                                            absl::Span<const ATy> in1) {
-  const size_t num = in0.size();
-  YACL_ENFORCE(num == in1.size());
-  // correlation
-  // [Warning] low efficiency!!! optimize it
-  auto [_delta, perm] = ctx->GetState<Correlation>()->ShuffleSet(num, 4);
-  auto val_delta0 = absl::MakeSpan(_delta).subspan(0 * num, num);
-  auto mac_delta0 = absl::MakeSpan(_delta).subspan(1 * num, num);
-  auto val_delta1 = absl::MakeSpan(_delta).subspan(2 * num, num);
-  auto mac_delta1 = absl::MakeSpan(_delta).subspan(3 * num, num);
-
-  auto conn = ctx->GetConnection();
-  auto val_buf0 = conn->Recv(ctx->NextRank(), "send:a0");
-  auto mac_buf0 = conn->Recv(ctx->NextRank(), "send:b0");
-  auto val_buf1 = conn->Recv(ctx->NextRank(), "send:a1");
-  auto mac_buf1 = conn->Recv(ctx->NextRank(), "send:b1");
-
-  auto val_tmp0 = absl::MakeSpan(reinterpret_cast<PTy*>(val_buf0.data()), num);
-  auto mac_tmp0 = absl::MakeSpan(reinterpret_cast<PTy*>(mac_buf0.data()), num);
-  auto val_tmp1 = absl::MakeSpan(reinterpret_cast<PTy*>(val_buf1.data()), num);
-  auto mac_tmp1 = absl::MakeSpan(reinterpret_cast<PTy*>(mac_buf1.data()), num);
-
-  auto [val_in0, mac_in0] = Unpack(absl::MakeConstSpan(in0));
-  auto [val_in1, mac_in1] = Unpack(absl::MakeConstSpan(in1));
-
-  op::AddInplace(absl::MakeSpan(val_tmp0), absl::MakeConstSpan(val_in0));
-  op::AddInplace(absl::MakeSpan(mac_tmp0), absl::MakeConstSpan(mac_in0));
-  op::AddInplace(absl::MakeSpan(val_tmp1), absl::MakeConstSpan(val_in1));
-  op::AddInplace(absl::MakeSpan(mac_tmp1), absl::MakeConstSpan(mac_in1));
-
-  for (size_t i = 0; i < num; ++i) {
-    val_delta0[i] = val_delta0[i] + val_tmp0[perm[i]];
-    mac_delta0[i] = mac_delta0[i] + mac_tmp0[perm[i]];
-    val_delta1[i] = val_delta1[i] + val_tmp1[perm[i]];
-    mac_delta1[i] = mac_delta1[i] + mac_tmp1[perm[i]];
+size_t ShuffleFindB(const std::map<size_t, size_t>& mapping, size_t num) {
+  const size_t kMagicSize = 1 << 12;
+  if (num <= kMagicSize) {
+    return mapping.at(kMagicSize);
   }
-  return {
-      Pack(absl::MakeConstSpan(val_delta0), absl::MakeConstSpan(mac_delta0)),
-      Pack(absl::MakeConstSpan(val_delta1), absl::MakeConstSpan(mac_delta1))};
+
+  auto it = mapping.lower_bound(num);
+  if (it == mapping.end()) {
+    SPDLOG_INFO("[Warning] num is too large");
+    return mapping.crbegin()->second;
+  }
+  return it->second;
 }
 
-std::array<std::vector<ATy>, 2> ShuffleASet_cache(std::shared_ptr<Context>& ctx,
-                                                  absl::Span<const ATy> in0,
-                                                  absl::Span<const ATy> in1) {
-  const size_t num = in0.size();
-  YACL_ENFORCE(num == in1.size());
+size_t ShuffleFindB(size_t T, size_t num) {
+  auto logT = yacl::math::Log2Ceil(T);
+
+  if (logT <= 4) {
+    return ShuffleFindB(kExtend4, num);
+  }
+
+  size_t B = 1;
+  switch (logT) {
+    case 5:
+      B = ShuffleFindB(kExtend5, num);
+      break;
+    case 6:
+      B = ShuffleFindB(kExtend6, num);
+      break;
+    case 7:
+      B = ShuffleFindB(kExtend7, num);
+      break;
+    case 8:
+      B = ShuffleFindB(kExtend8, num);
+      break;
+    case 9:
+      B = ShuffleFindB(kExtend9, num);
+      break;
+    default:
+      B = ShuffleFindB(kExtend10, num);
+      break;
+  }
+  return B;
+}
+}  // namespace
+
+std::vector<PTy> ShuffleCompose_2k(size_t i, size_t num,
+                                   const std::vector<std::vector<PTy>>& ins,
+                                   size_t repeat) {
+  YACL_ENFORCE(repeat > 0);
+  YACL_ENFORCE(ins[0].size() % repeat == 0);
+
+  const auto T_num = ins.size();
+  const auto T = ins[0].size() / repeat;
+
+  YACL_ENFORCE((T & (T - 1)) == 0);
+  YACL_ENFORCE(T * T_num == num);
+
+  const auto num_bits = yacl::math::Log2Ceil(num);
+  const auto T_bits = yacl::math::Log2Ceil(T);
+
+  const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
+
+  if (2 * i > depth) {
+    i = depth - i - 1;
+  }
+
+  std::vector<PTy> out(num * repeat);
+
+  int stride = num_bits - (i + 1) * T_bits;
+  if (stride < 0) {
+    stride = 0;
+  }
+  const auto step = 1 << stride;
+
+  uint32_t offset = 0;
+  for (size_t i = 0; i < T_num; ++i) {
+    for (size_t j = 0; j < T; ++j) {
+      for (size_t p = 0; p < repeat; ++p) {
+        out[offset + j * step + num * p] = ins[i][j + T * p];
+      }
+    }
+
+    offset += 1;
+    int rest = offset % (T * step);
+    if (rest == step) {
+      offset += step * (T - 1);
+    }
+  }
+
+  return out;
+}
+
+std::vector<size_t> ShuffleCompose_2k(
+    size_t i, size_t num, const std::vector<std::vector<size_t>>& perms) {
+  const auto T_num = perms.size();
+  const auto T = perms[0].size();
+
+  YACL_ENFORCE(T * T_num == num);
+
+  const auto num_bits = yacl::math::Log2Ceil(num);
+  const auto T_bits = yacl::math::Log2Ceil(T);
+
+  const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
+  // const auto depth = 2 * (num_bits - T_bits) + 1;
+
+  if (2 * i > depth) {
+    i = depth - i - 1;
+  }
+
+  std::vector<size_t> out(num);
+
+  int stride = num_bits - (i + 1) * T_bits;
+  if (stride < 0) {
+    stride = 0;
+  }
+  const auto step = 1 << stride;
+
+  uint32_t offset = 0;
+  for (size_t i = 0; i < T_num; ++i) {
+    for (size_t j = 0; j < T; ++j) {
+      out[offset + j * step] = offset + perms[i][j] * step;
+    }
+
+    offset += 1;
+    int rest = offset % (T * step);
+    if (rest == step) {
+      offset += step * (T - 1);
+    }
+  }
+
+  return out;
+}
+
+std::vector<ATy> ShuffleAGet_2k(std::shared_ptr<Context>& ctx, const size_t T,
+                                absl::Span<const ATy> in) {
+  const size_t num = in.size();
+  YACL_ENFORCE((num & (num - 1)) == 0);
+  YACL_ENFORCE((T & (T - 1)) == 0);
+  const size_t T_num = num / T;
+  YACL_ENFORCE(num % T == 0);
+
+  const size_t num_bits = yacl::math::Log2Ceil(num);
+  const size_t T_bits = yacl::math::Log2Ceil(T);
+  const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
   // correlation
   // [Warning] low efficiency!!! optimize it
-  ctx->GetState<Correlation>()->ShuffleSet_cache(num, 4);
-  return {std::vector<ATy>(num), std::vector<ATy>(num)};
+  auto prot = ctx->GetState<Protocol>();
+
+  std::vector<ATy> ret(num);
+  const size_t ext = ShuffleFindB(T, num);
+  SPDLOG_INFO("Shuffle2k ext is {} with depth {}", ext, depth);
+  for (size_t i = 0; i < depth; ++i) {
+    for (size_t _ = 0; _ < ext; ++_) {
+      std::vector<std::vector<PTy>> vec_a;
+      std::vector<std::vector<PTy>> vec_b;
+
+      for (size_t t = 0; t < T_num; ++t) {
+        auto [ext_a, ext_b] = ctx->GetState<Correlation>()->ShuffleGet(T, 2);
+        vec_a.emplace_back(std::move(ext_a));
+        vec_b.emplace_back(std::move(ext_b));
+      }
+
+      auto ext_a = ShuffleCompose_2k(i, num, vec_a, 2);
+      auto ext_b = ShuffleCompose_2k(i, num, vec_b, 2);
+
+      YACL_ENFORCE(ext_a.size() == 2 * num);
+      YACL_ENFORCE(ext_b.size() == 2 * num);
+
+      ret = ShuffleAGet_internal(ctx, in, ext_a, ext_b);
+      in = absl::MakeConstSpan(ret);
+      // Delay Check
+      prot->NdssBufferAppend(ret);
+    }
+  }
+  return ret;
 }
 
-std::array<std::vector<ATy>, 2> ShuffleA(std::shared_ptr<Context>& ctx,
-                                         absl::Span<const ATy> in0,
-                                         absl::Span<const ATy> in1) {
+std::vector<ATy> ShuffleAGet_2k_cache(std::shared_ptr<Context>& ctx,
+                                      const size_t T,
+                                      absl::Span<const ATy> in) {
+  const size_t num = in.size();
+  YACL_ENFORCE((num & (num - 1)) == 0);
+  YACL_ENFORCE((T & (T - 1)) == 0);
+  YACL_ENFORCE(num % T == 0);
+  const size_t num_bits = yacl::math::Log2Ceil(num);
+  const size_t T_bits = yacl::math::Log2Ceil(T);
+  const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
+  // correlation
+  // [Warning] low efficiency!!! optimize it
+
+  const size_t ext = ShuffleFindB(T, num);
+  for (size_t i = 0; i < depth; ++i) {
+    for (size_t _ = 0; _ < ext; ++_) {
+      ctx->GetState<Correlation>()->ShuffleGet_cache(T, 2);
+    }
+  }
+  return std::vector<ATy>(num);
+}
+
+std::vector<ATy> ShuffleASet_2k(std::shared_ptr<Context>& ctx, const size_t T,
+                                absl::Span<const ATy> in) {
+  const size_t num = in.size();
+  YACL_ENFORCE((num & (num - 1)) == 0);
+  YACL_ENFORCE((T & (T - 1)) == 0);
+  const size_t T_num = num / T;
+  YACL_ENFORCE(num % T == 0);
+
+  const size_t num_bits = yacl::math::Log2Ceil(num);
+  const size_t T_bits = yacl::math::Log2Ceil(T);
+  const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
+
+  // correlation
+  // [Warning] low efficiency!!! optimize it
+  auto prot = ctx->GetState<Protocol>();
+  const size_t ext = ShuffleFindB(T, num);
+  SPDLOG_INFO("Shuffle2k ext is {} with depth {}", ext, depth);
+
+  std::vector<ATy> ret(num);
+  for (size_t i = 0; i < depth; ++i) {
+    for (size_t _ = 0; _ < ext; ++_) {
+      std::vector<std::vector<PTy>> vec_delta;
+      std::vector<std::vector<size_t>> vec_perm;
+      for (size_t t = 0; t < T_num; ++t) {
+        auto [ext_delta, perm] = ctx->GetState<Correlation>()->ShuffleSet(T, 2);
+        vec_delta.emplace_back(std::move(ext_delta));
+        vec_perm.emplace_back(std::move(perm));
+      }
+
+      auto ext_delta = ShuffleCompose_2k(i, num, vec_delta, 2);
+      auto perm = ShuffleCompose_2k(i, num, vec_perm);
+
+      YACL_ENFORCE(ext_delta.size() == 2 * num);
+      YACL_ENFORCE(perm.size() == num);
+
+      ret = ShuffleASet_internal(ctx, in, perm, ext_delta);
+      in = absl::MakeConstSpan(ret);
+      // Delay Check
+      prot->NdssBufferAppend(ret);
+    }
+  }
+  return ret;
+}
+
+std::vector<ATy> ShuffleASet_2k_cache(std::shared_ptr<Context>& ctx,
+                                      const size_t T,
+                                      absl::Span<const ATy> in) {
+  const size_t num = in.size();
+  YACL_ENFORCE((num & (num - 1)) == 0);
+  YACL_ENFORCE((T & (T - 1)) == 0);
+  YACL_ENFORCE(num % T == 0);
+  const size_t num_bits = yacl::math::Log2Ceil(num);
+  const size_t T_bits = yacl::math::Log2Ceil(T);
+  const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
+  // correlation
+  // [Warning] low efficiency!!! optimize it
+  const size_t ext = ShuffleFindB(T, num);
+  for (size_t i = 0; i < depth; ++i) {
+    for (size_t _ = 0; _ < ext; ++_) {
+      ctx->GetState<Correlation>()->ShuffleSet_cache(T, 2);
+    }
+  }
+  return std::vector<ATy>(num);
+}
+
+std::vector<ATy> ShuffleA_2k(std::shared_ptr<Context>& ctx, const size_t T,
+                             absl::Span<const ATy> in) {
   if (ctx->GetRank() == 0) {
-    auto tmp = ShuffleASet(ctx, in0, in1);
-    return ShuffleAGet(ctx, tmp[0], tmp[1]);
+    auto tmp = ShuffleASet_2k(ctx, T, in);
+    return ShuffleAGet_2k(ctx, T, tmp);
   }
-  auto tmp = ShuffleAGet(ctx, in0, in1);
-  return ShuffleASet(ctx, tmp[0], tmp[1]);
+  auto tmp = ShuffleAGet_2k(ctx, T, in);
+  return ShuffleASet_2k(ctx, T, tmp);
 }
 
-std::array<std::vector<ATy>, 2> ShuffleA_cache(std::shared_ptr<Context>& ctx,
-                                               absl::Span<const ATy> in0,
-                                               absl::Span<const ATy> in1) {
+std::vector<ATy> ShuffleA_2k_cache(std::shared_ptr<Context>& ctx,
+                                   const size_t T, absl::Span<const ATy> in) {
   if (ctx->GetRank() == 0) {
-    auto tmp = ShuffleASet_cache(ctx, in0, in1);
-    return ShuffleAGet_cache(ctx, tmp[0], tmp[1]);
+    auto tmp = ShuffleASet_2k_cache(ctx, T, in);
+    return ShuffleAGet_2k_cache(ctx, T, tmp);
   }
-  auto tmp = ShuffleAGet_cache(ctx, in0, in1);
-  return ShuffleASet_cache(ctx, tmp[0], tmp[1]);
+  auto tmp = ShuffleAGet_2k_cache(ctx, T, in);
+  return ShuffleASet_2k_cache(ctx, T, tmp);
 }
 
 // --------------- Secure Shuffle ---------------
@@ -885,7 +1095,7 @@ std::vector<ATy> NMulA_cache(std::shared_ptr<Context>& ctx,
   return MulAP_cache(ctx, absl::MakeConstSpan(lhs), absl::MakeConstSpan(rhs));
 }
 
-// --------------- Special ------------------
+// --------------- Special ---------------
 
 // A-share Setter, return A-share ( in , in * key + r )
 std::vector<ATy> SetA(std::shared_ptr<Context>& ctx, absl::Span<const PTy> in) {

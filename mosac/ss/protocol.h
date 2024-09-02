@@ -27,6 +27,8 @@ class Protocol : public State {
   PTy key_;
   // check buffer
   std::vector<PTy> check_buff_;
+  std::vector<std::vector<PTy>> ndss_val_buff_;
+  std::vector<std::vector<PTy>> ndss_mac_buff_;
 
  public:
   static const std::string id;
@@ -108,18 +110,15 @@ class Protocol : public State {
   std::vector<ATy> ShuffleASet(absl::Span<const ATy> in, bool cache = false);
   std::vector<ATy> ShuffleAGet(absl::Span<const ATy> in, bool cache = false);
 
-  // shuffle entry
-  std::array<std::vector<ATy>, 2> ShuffleA(absl::Span<const ATy> in0,
-                                           absl::Span<const ATy> in1,
-                                           bool cache = false);
-  std::array<std::vector<ATy>, 2> ShuffleASet(absl::Span<const ATy> in0,
-                                              absl::Span<const ATy> in1,
-                                              bool cache = false);
-  std::array<std::vector<ATy>, 2> ShuffleAGet(absl::Span<const ATy> in0,
-                                              absl::Span<const ATy> in1,
-                                              bool cache = false);
+  // NDSS shuffle entry
+  std::vector<ATy> ShuffleA_2k(size_t T, absl::Span<const ATy> in,
+                               bool cache = false);
+  std::vector<ATy> ShuffleASet_2k(size_t T, absl::Span<const ATy> in,
+                                  bool cache = false);
+  std::vector<ATy> ShuffleAGet_2k(size_t T, absl::Span<const ATy> in,
+                                  bool cache = false);
 
-  // sshuffle entry
+  // secure shuffle entry
   std::vector<ATy> SShuffleA(absl::Span<const ATy> in, bool cache = false);
   std::vector<ATy> SShuffleASet(absl::Span<const ATy> in, bool cache = false);
   std::vector<ATy> SShuffleAGet(absl::Span<const ATy> in, bool cache = false);
@@ -141,6 +140,11 @@ class Protocol : public State {
                                bool cache = false);
   std::vector<PTy> ScalarMulPP(const PTy& scalar, absl::Span<const PTy> in,
                                bool cache = false);
+
+  // check buffer
+  void NdssBufferAppend(absl::Span<const ATy> in);
+  void NdssBufferAppend(const ATy& in);
+  bool NdssDelayCheck();
 
   // check buffer
   void CheckBufferAppend(absl::Span<const PTy> in);

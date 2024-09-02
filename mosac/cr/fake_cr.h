@@ -37,6 +37,13 @@ class FakeCorrelation : public Correlation {
   void ShuffleGet(absl::Span<internal::PTy> a, absl::Span<internal::PTy> b,
                   size_t repeat = 1) override;
 
+  void BatchShuffleSet(
+      size_t batch_num, size_t per_size, size_t repeat,
+      const std::vector<std::vector<size_t>>& perms,
+      std::vector<std::vector<internal::PTy>>& vec_delta) override;
+  void BatchShuffleGet(size_t batch_num, size_t per_size, size_t repeat,
+                       std::vector<std::vector<internal::PTy>>& vec_a,
+                       std::vector<std::vector<internal::PTy>>& vec_b) override;
   // entry
   std::vector<size_t> ASTSet(absl::Span<internal::ATy> a,
                              absl::Span<internal::ATy> b) override;

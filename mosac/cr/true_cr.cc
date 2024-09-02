@@ -8,12 +8,27 @@
 namespace mosac {
 
 namespace {
-const std::map<int, int> kExtend = {
+const std::map<size_t, size_t> kExtend = {
     {1 << 4, 9},  {1 << 5, 8},  {1 << 6, 7},  {1 << 7, 6},  {1 << 8, 6},
     {1 << 9, 5},  {1 << 10, 5}, {1 << 11, 5}, {1 << 12, 4}, {1 << 13, 4},
     {1 << 14, 4}, {1 << 15, 4}, {1 << 16, 4}, {1 << 17, 4}, {1 << 18, 4},
     {1 << 19, 3}, {1 << 20, 3}};
+
+size_t findB(size_t num) {
+  const size_t kMagicSize = 1 << 12;
+  if (num <= kMagicSize) {
+    return kExtend.at(kMagicSize);
+  }
+
+  auto it = kExtend.lower_bound(num);
+  if (it == kExtend.end()) {
+    SPDLOG_INFO("[Warning] num is too large");
+    return kExtend.crbegin()->second;
+  }
+  return it->second;
 }
+
+}  // namespace
 
 void TrueCorrelation::BeaverTriple(absl::Span<internal::ATy> a,
                                    absl::Span<internal::ATy> b,
@@ -198,7 +213,47 @@ void TrueCorrelation::ShuffleGet(absl::Span<internal::PTy> a,
   ot::OtHelper(ot_sender_, ot_receiver_).ShuffleRecv(conn, a, b, repeat);
 }
 
-// TODO: implementation it
+void TrueCorrelation::BatchShuffleSet(
+    size_t batch_num, size_t per_size, size_t repeat,
+    const std::vector<std::vector<size_t>>& perms,
+    std::vector<std::vector<internal::PTy>>& vec_delta) {
+  auto conn = ctx_->GetConnection();
+  vec_delta.clear();
+
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .BatchShuffleSend(conn, batch_num, per_size, repeat, perms, vec_delta);
+
+  // for (size_t i = 0; i < batch_num; ++i) {
+  //   auto& perm = perms[i];
+  //   std::vector<internal::PTy> tmp_delta(per_size * repeat);
+  //   ShuffleSet(absl::MakeConstSpan(perm), absl::MakeSpan(tmp_delta), repeat);
+
+  //   vec_delta.emplace_back(std::move(tmp_delta));
+  // }
+}
+
+void TrueCorrelation::BatchShuffleGet(
+    size_t batch_num, size_t per_size, size_t repeat,
+    std::vector<std::vector<internal::PTy>>& vec_a,
+    std::vector<std::vector<internal::PTy>>& vec_b) {
+  auto conn = ctx_->GetConnection();
+  vec_a.clear();
+  vec_b.clear();
+
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .BatchShuffleRecv(conn, batch_num, per_size, repeat, vec_a, vec_b);
+
+  // for (size_t i = 0; i < batch_num; ++i) {
+  //   std::vector<internal::PTy> tmp_a(per_size * repeat);
+  //   std::vector<internal::PTy> tmp_b(per_size * repeat);
+  //   ShuffleGet(absl::MakeSpan(tmp_a), absl::MakeSpan(tmp_b), repeat);
+
+  //   vec_a.emplace_back(std::move(tmp_a));
+  //   vec_b.emplace_back(std::move(tmp_b));
+  // }
+}
+
+// AST
 std::vector<size_t> TrueCorrelation::ASTSet(absl::Span<internal::ATy> a,
                                             absl::Span<internal::ATy> b) {
   const size_t num = a.size();
@@ -918,10 +973,7 @@ std::vector<std::vector<size_t>> TrueCorrelation::ASTSet_batch_basic_2k(
   // YACL_ENFORCE((num & (num - 1)) == 0);
   YACL_ENFORCE((T & (T - 1)) == 0);
 
-  auto it = kExtend.lower_bound(num);
-  YACL_ENFORCE(it != kExtend.end());
-
-  auto ext = it->second;
+  auto ext = findB(num);  // NB choose and cut
   auto ext_num = num * ext;
 
   SPDLOG_INFO("T is {}, num is {}, num extend is {}", T, num, ext_num);
@@ -969,10 +1021,7 @@ void TrueCorrelation::ASTGet_batch_basic_2k(
   // YACL_ENFORCE((num & (num - 1)) == 0);
   YACL_ENFORCE((T & (T - 1)) == 0);
 
-  auto it = kExtend.lower_bound(num);
-  YACL_ENFORCE(it != kExtend.end());
-
-  auto ext = it->second;
+  auto ext = findB(num);  // NB choose and cut
   auto ext_num = num * ext;
 
   SPDLOG_INFO("T is {}, num is {}, num extend is {}", T, num, ext_num);
