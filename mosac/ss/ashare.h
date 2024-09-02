@@ -113,7 +113,7 @@ std::vector<ATy> P2A(std::shared_ptr<Context>& ctx, absl::Span<const PTy> in);
 std::vector<ATy> P2A_cache(std::shared_ptr<Context>& ctx,
                            absl::Span<const PTy> in);
 
-// special
+// Shuffle
 std::vector<ATy> ShuffleAGet(std::shared_ptr<Context>& ctx,
                              absl::Span<const ATy> in);
 std::vector<ATy> ShuffleAGet_cache(std::shared_ptr<Context>& ctx,
@@ -128,6 +128,23 @@ std::vector<ATy> ShuffleA(std::shared_ptr<Context>& ctx,
                           absl::Span<const ATy> in);
 std::vector<ATy> ShuffleA_cache(std::shared_ptr<Context>& ctx,
                                 absl::Span<const ATy> in);
+
+// NDSS Shuffle
+std::vector<ATy> ShuffleAGet_2k(std::shared_ptr<Context>& ctx, const size_t T,
+                                absl::Span<const ATy> in);
+std::vector<ATy> ShuffleAGet_2k_cache(std::shared_ptr<Context>& ctx,
+                                      const size_t T, absl::Span<const ATy> in);
+
+std::vector<ATy> ShuffleASet_2k(std::shared_ptr<Context>& ctx, const size_t T,
+                                absl::Span<const ATy> in);
+std::vector<ATy> ShuffleASet_2k_cache(std::shared_ptr<Context>& ctx,
+                                      const size_t T, absl::Span<const ATy> in);
+
+std::vector<ATy> ShuffleA_2k(std::shared_ptr<Context>& ctx, const size_t T,
+                             absl::Span<const ATy> in);
+
+std::vector<ATy> ShuffleA_2k_cache(std::shared_ptr<Context>& ctx,
+                                   const size_t T, absl::Span<const ATy> in);
 
 // Secure Shuffle
 std::vector<ATy> SShuffleAGet(std::shared_ptr<Context>& ctx,
@@ -149,28 +166,6 @@ std::vector<ATy> SShuffleA_cache(std::shared_ptr<Context>& ctx,
 std::vector<ATy> NMulA(std::shared_ptr<Context>& ctx, absl::Span<const ATy> in);
 std::vector<ATy> NMulA_cache(std::shared_ptr<Context>& ctx,
                              absl::Span<const ATy> in);
-
-// shuffle inputs with same permutation
-std::array<std::vector<ATy>, 2> ShuffleAGet(std::shared_ptr<Context>& ctx,
-                                            absl::Span<const ATy> in0,
-                                            absl::Span<const ATy> in1);
-std::array<std::vector<ATy>, 2> ShuffleAGet_cache(std::shared_ptr<Context>& ctx,
-                                                  absl::Span<const ATy> in0,
-                                                  absl::Span<const ATy> in1);
-
-std::array<std::vector<ATy>, 2> ShuffleASet(std::shared_ptr<Context>& ctx,
-                                            absl::Span<const ATy> in0,
-                                            absl::Span<const ATy> in1);
-std::array<std::vector<ATy>, 2> ShuffleASet_cache(std::shared_ptr<Context>& ctx,
-                                                  absl::Span<const ATy> in0,
-                                                  absl::Span<const ATy> in1);
-
-std::array<std::vector<ATy>, 2> ShuffleA(std::shared_ptr<Context>& ctx,
-                                         absl::Span<const ATy> in0,
-                                         absl::Span<const ATy> in1);
-std::array<std::vector<ATy>, 2> ShuffleA_cache(std::shared_ptr<Context>& ctx,
-                                               absl::Span<const ATy> in0,
-                                               absl::Span<const ATy> in1);
 
 // A-share Setter, return A-share ( in , in * key + r )
 std::vector<ATy> SetA(std::shared_ptr<Context>& ctx, absl::Span<const PTy> in);

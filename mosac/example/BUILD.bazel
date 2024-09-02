@@ -44,6 +44,24 @@ mosac_cc_binary(
 )
 
 mosac_cc_binary(
+    name = "NDSS_example",
+    srcs = ["NDSS_example.cc"],
+    deps = [
+        "//mosac/context:register",
+        "//mosac/ss:protocol",
+        "//mosac/utils:test_util",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/base:int128",
+        "@yacl//yacl/link",
+        "@yacl//yacl/utils:serialize",
+        "@yacl//yacl/utils:parallel",
+        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/strings",
+        ":macro",
+    ],
+)
+
+mosac_cc_binary(
     name = "AST2k_example",
     srcs = ["AST2k_example.cc"],
     deps = [
