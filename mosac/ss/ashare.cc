@@ -805,6 +805,7 @@ std::vector<ATy> ShuffleAGet_2k_cache(std::shared_ptr<Context>& ctx,
   const size_t num = in.size();
   YACL_ENFORCE((num & (num - 1)) == 0);
   YACL_ENFORCE((T & (T - 1)) == 0);
+  const size_t T_num = num / T;
   YACL_ENFORCE(num % T == 0);
   const size_t num_bits = yacl::math::Log2Ceil(num);
   const size_t T_bits = yacl::math::Log2Ceil(T);
@@ -815,7 +816,9 @@ std::vector<ATy> ShuffleAGet_2k_cache(std::shared_ptr<Context>& ctx,
   const size_t ext = ShuffleFindB(T, num);
   for (size_t i = 0; i < depth; ++i) {
     for (size_t _ = 0; _ < ext; ++_) {
-      ctx->GetState<Correlation>()->ShuffleGet_cache(T, 2);
+      for (size_t t = 0; t < T_num; ++t) {
+        ctx->GetState<Correlation>()->ShuffleGet_cache(T, 2);
+      }
     }
   }
   return std::vector<ATy>(num);
@@ -871,6 +874,7 @@ std::vector<ATy> ShuffleASet_2k_cache(std::shared_ptr<Context>& ctx,
   const size_t num = in.size();
   YACL_ENFORCE((num & (num - 1)) == 0);
   YACL_ENFORCE((T & (T - 1)) == 0);
+  const size_t T_num = num / T;
   YACL_ENFORCE(num % T == 0);
   const size_t num_bits = yacl::math::Log2Ceil(num);
   const size_t T_bits = yacl::math::Log2Ceil(T);
@@ -880,7 +884,9 @@ std::vector<ATy> ShuffleASet_2k_cache(std::shared_ptr<Context>& ctx,
   const size_t ext = ShuffleFindB(T, num);
   for (size_t i = 0; i < depth; ++i) {
     for (size_t _ = 0; _ < ext; ++_) {
-      ctx->GetState<Correlation>()->ShuffleSet_cache(T, 2);
+      for (size_t t = 0; t < T_num; ++t) {
+        ctx->GetState<Correlation>()->ShuffleSet_cache(T, 2);
+      }
     }
   }
   return std::vector<ATy>(num);
