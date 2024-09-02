@@ -236,6 +236,11 @@ class Correlation : public State {
                    const std::vector<uint64_t>& ast_set_shape = {},
                    const std::vector<uint64_t>& ast_get_shape = {},
                    const std::vector<uint64_t>& n_mul_shape = {});
+
+  inline std::vector<uint64_t> GetASTSetShape() const { return ast_s_shape_; }
+  inline std::vector<uint64_t> GetASTGetShape() const { return ast_g_shape_; }
+  inline std::vector<uint64_t> GetShuffleSetShape() const { return s_s_shape_; }
+  inline std::vector<uint64_t> GetShuffleGetShape() const { return s_g_shape_; }
 };
 
 struct CorrelationCache {

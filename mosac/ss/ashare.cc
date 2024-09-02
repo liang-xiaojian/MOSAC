@@ -585,6 +585,88 @@ std::vector<ATy> ShuffleA_cache(std::shared_ptr<Context>& ctx,
 }
 
 // --------------- NDSS Shuffle ---------------
+namespace {
+const std::map<size_t, size_t> kExtend4 = {
+    {1 << 4, 19},  {1 << 5, 17},  {1 << 6, 16},  {1 << 7, 16},  {1 << 8, 15},
+    {1 << 9, 14},  {1 << 10, 14}, {1 << 11, 14}, {1 << 12, 14}, {1 << 13, 13},
+    {1 << 14, 13}, {1 << 15, 13}, {1 << 16, 13}};
+
+const std::map<size_t, size_t> kExtend5 = {
+    {1 << 4, 17},  {1 << 5, 15},  {1 << 6, 14},  {1 << 7, 14},  {1 << 8, 14},
+    {1 << 9, 13},  {1 << 10, 13}, {1 << 11, 12}, {1 << 12, 12}, {1 << 13, 11},
+    {1 << 14, 11}, {1 << 15, 11}, {1 << 16, 11}};
+
+const std::map<size_t, size_t> kExtend6 = {
+    {1 << 4, 16},  {1 << 5, 14},  {1 << 6, 13},  {1 << 7, 13},  {1 << 8, 12},
+    {1 << 9, 12},  {1 << 10, 11}, {1 << 11, 11}, {1 << 12, 11}, {1 << 13, 10},
+    {1 << 14, 10}, {1 << 15, 10}, {1 << 16, 10}};
+
+const std::map<size_t, size_t> kExtend7 = {
+    {1 << 4, 15}, {1 << 5, 13},  {1 << 6, 12},  {1 << 7, 12},  {1 << 8, 11},
+    {1 << 9, 11}, {1 << 10, 10}, {1 << 11, 10}, {1 << 12, 10}, {1 << 13, 9},
+    {1 << 14, 9}, {1 << 15, 9},  {1 << 16, 9}};
+
+const std::map<size_t, size_t> kExtend8 = {
+    {1 << 4, 14}, {1 << 5, 12}, {1 << 6, 11}, {1 << 7, 11}, {1 << 8, 10},
+    {1 << 9, 10}, {1 << 10, 9}, {1 << 11, 9}, {1 << 12, 9}, {1 << 13, 8},
+    {1 << 14, 8}, {1 << 15, 8}, {1 << 16, 8}};
+
+const std::map<size_t, size_t> kExtend9 = {
+    {1 << 4, 14}, {1 << 5, 12}, {1 << 6, 11}, {1 << 7, 11}, {1 << 8, 10},
+    {1 << 9, 10}, {1 << 10, 9}, {1 << 11, 9}, {1 << 12, 9}, {1 << 13, 8},
+    {1 << 14, 8}, {1 << 15, 8}, {1 << 16, 8}};
+
+const std::map<size_t, size_t> kExtend10 = {
+    {1 << 4, 12}, {1 << 5, 11}, {1 << 6, 10}, {1 << 7, 9},  {1 << 8, 9},
+    {1 << 9, 8},  {1 << 10, 8}, {1 << 11, 8}, {1 << 12, 8}, {1 << 13, 7},
+    {1 << 14, 7}, {1 << 15, 7}, {1 << 16, 7}};
+
+size_t ShuffleFindB(const std::map<size_t, size_t>& mapping, size_t num) {
+  const size_t kMagicSize = 1 << 12;
+  if (num <= kMagicSize) {
+    return mapping.at(kMagicSize);
+  }
+
+  auto it = mapping.lower_bound(num);
+  if (it == mapping.end()) {
+    SPDLOG_INFO("[Warning] num is too large");
+    return mapping.crbegin()->second;
+  }
+  return it->second;
+}
+
+size_t ShuffleFindB(size_t T, size_t num) {
+  auto logT = yacl::math::Log2Ceil(T);
+
+  if (logT <= 4) {
+    return ShuffleFindB(kExtend4, num);
+  }
+
+  size_t B = 1;
+  switch (logT) {
+    case 5:
+      B = ShuffleFindB(kExtend5, num);
+      break;
+    case 6:
+      B = ShuffleFindB(kExtend6, num);
+      break;
+    case 7:
+      B = ShuffleFindB(kExtend7, num);
+      break;
+    case 8:
+      B = ShuffleFindB(kExtend8, num);
+      break;
+    case 9:
+      B = ShuffleFindB(kExtend9, num);
+      break;
+    default:
+      B = ShuffleFindB(kExtend10, num);
+      break;
+  }
+  return B;
+}
+}  // namespace
+
 std::vector<PTy> ShuffleCompose_2k(size_t i, size_t num,
                                    const std::vector<std::vector<PTy>>& ins,
                                    size_t repeat) {
@@ -607,8 +689,6 @@ std::vector<PTy> ShuffleCompose_2k(size_t i, size_t num,
   }
 
   std::vector<PTy> out(num * repeat);
-
-  SPDLOG_INFO("Composed Vec");
 
   int stride = num_bits - (i + 1) * T_bits;
   if (stride < 0) {
@@ -646,8 +726,6 @@ std::vector<size_t> ShuffleCompose_2k(
 
   const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
   // const auto depth = 2 * (num_bits - T_bits) + 1;
-
-  SPDLOG_INFO("Composed Perm");
 
   if (2 * i > depth) {
     i = depth - i - 1;
@@ -693,28 +771,30 @@ std::vector<ATy> ShuffleAGet_2k(std::shared_ptr<Context>& ctx, const size_t T,
   auto prot = ctx->GetState<Protocol>();
 
   std::vector<ATy> ret(num);
+  const size_t ext = ShuffleFindB(T, num);
+  SPDLOG_INFO("Shuffle2k ext is {} with depth {}", ext, depth);
   for (size_t i = 0; i < depth; ++i) {
-    std::vector<std::vector<PTy>> vec_a;
-    std::vector<std::vector<PTy>> vec_b;
+    for (size_t _ = 0; _ < ext; ++_) {
+      std::vector<std::vector<PTy>> vec_a;
+      std::vector<std::vector<PTy>> vec_b;
 
-    for (size_t t = 0; t < T_num; ++t) {
-      auto [ext_a, ext_b] = ctx->GetState<Correlation>()->ShuffleGet(T, 2);
-      vec_a.emplace_back(std::move(ext_a));
-      vec_b.emplace_back(std::move(ext_b));
+      for (size_t t = 0; t < T_num; ++t) {
+        auto [ext_a, ext_b] = ctx->GetState<Correlation>()->ShuffleGet(T, 2);
+        vec_a.emplace_back(std::move(ext_a));
+        vec_b.emplace_back(std::move(ext_b));
+      }
+
+      auto ext_a = ShuffleCompose_2k(i, num, vec_a, 2);
+      auto ext_b = ShuffleCompose_2k(i, num, vec_b, 2);
+
+      YACL_ENFORCE(ext_a.size() == 2 * num);
+      YACL_ENFORCE(ext_b.size() == 2 * num);
+
+      ret = ShuffleAGet_internal(ctx, in, ext_a, ext_b);
+      in = absl::MakeConstSpan(ret);
+      // Delay Check
+      prot->NdssBufferAppend(ret);
     }
-
-    auto ext_a = ShuffleCompose_2k(i, num, vec_a, 2);
-    auto ext_b = ShuffleCompose_2k(i, num, vec_b, 2);
-
-    YACL_ENFORCE(ext_a.size() == 2 * num);
-    YACL_ENFORCE(ext_b.size() == 2 * num);
-
-    SPDLOG_INFO("Compose Vec Done");
-
-    ret = ShuffleAGet_internal(ctx, in, ext_a, ext_b);
-    in = absl::MakeConstSpan(ret);
-    // Delay Check
-    prot->NdssBufferAppend(ret);
   }
   return ret;
 }
@@ -731,8 +811,12 @@ std::vector<ATy> ShuffleAGet_2k_cache(std::shared_ptr<Context>& ctx,
   const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
   // correlation
   // [Warning] low efficiency!!! optimize it
+
+  const size_t ext = ShuffleFindB(T, num);
   for (size_t i = 0; i < depth; ++i) {
-    ctx->GetState<Correlation>()->ShuffleGet_cache(num, 2);
+    for (size_t _ = 0; _ < ext; ++_) {
+      ctx->GetState<Correlation>()->ShuffleGet_cache(T, 2);
+    }
   }
   return std::vector<ATy>(num);
 }
@@ -752,29 +836,31 @@ std::vector<ATy> ShuffleASet_2k(std::shared_ptr<Context>& ctx, const size_t T,
   // correlation
   // [Warning] low efficiency!!! optimize it
   auto prot = ctx->GetState<Protocol>();
+  const size_t ext = ShuffleFindB(T, num);
+  SPDLOG_INFO("Shuffle2k ext is {} with depth {}", ext, depth);
 
   std::vector<ATy> ret(num);
   for (size_t i = 0; i < depth; ++i) {
-    std::vector<std::vector<PTy>> vec_delta;
-    std::vector<std::vector<size_t>> vec_perm;
-    for (size_t t = 0; t < T_num; ++t) {
-      auto [ext_delta, perm] = ctx->GetState<Correlation>()->ShuffleSet(T, 2);
-      vec_delta.emplace_back(std::move(ext_delta));
-      vec_perm.emplace_back(std::move(perm));
+    for (size_t _ = 0; _ < ext; ++_) {
+      std::vector<std::vector<PTy>> vec_delta;
+      std::vector<std::vector<size_t>> vec_perm;
+      for (size_t t = 0; t < T_num; ++t) {
+        auto [ext_delta, perm] = ctx->GetState<Correlation>()->ShuffleSet(T, 2);
+        vec_delta.emplace_back(std::move(ext_delta));
+        vec_perm.emplace_back(std::move(perm));
+      }
+
+      auto ext_delta = ShuffleCompose_2k(i, num, vec_delta, 2);
+      auto perm = ShuffleCompose_2k(i, num, vec_perm);
+
+      YACL_ENFORCE(ext_delta.size() == 2 * num);
+      YACL_ENFORCE(perm.size() == num);
+
+      ret = ShuffleASet_internal(ctx, in, perm, ext_delta);
+      in = absl::MakeConstSpan(ret);
+      // Delay Check
+      prot->NdssBufferAppend(ret);
     }
-
-    auto ext_delta = ShuffleCompose_2k(i, num, vec_delta, 2);
-    auto perm = ShuffleCompose_2k(i, num, vec_perm);
-
-    YACL_ENFORCE(ext_delta.size() == 2 * num);
-    YACL_ENFORCE(perm.size() == num);
-
-    SPDLOG_INFO("Compose Perm Done");
-
-    ret = ShuffleASet_internal(ctx, in, perm, ext_delta);
-    in = absl::MakeConstSpan(ret);
-    // Delay Check
-    prot->NdssBufferAppend(ret);
   }
   return ret;
 }
@@ -791,8 +877,11 @@ std::vector<ATy> ShuffleASet_2k_cache(std::shared_ptr<Context>& ctx,
   const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
   // correlation
   // [Warning] low efficiency!!! optimize it
+  const size_t ext = ShuffleFindB(T, num);
   for (size_t i = 0; i < depth; ++i) {
-    ctx->GetState<Correlation>()->ShuffleSet_cache(num, 2);
+    for (size_t _ = 0; _ < ext; ++_) {
+      ctx->GetState<Correlation>()->ShuffleSet_cache(T, 2);
+    }
   }
   return std::vector<ATy>(num);
 }

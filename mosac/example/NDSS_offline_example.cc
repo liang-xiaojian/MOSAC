@@ -35,60 +35,71 @@ llvm::cl::opt<uint32_t> cl_small("small_power", llvm::cl::init(3),
 
 llvm::cl::opt<uint32_t> cl_big("big_power", llvm::cl::init(4),
                                llvm::cl::desc("num=2^big_power"));
-llvm::cl::opt<uint32_t> cl_cache(
-    "cache", llvm::cl::init(1),
-    llvm::cl::desc(
-        "0 for no cache, 1 for cache (pre-compute offline randomness)"));
 
-auto NDSS_shuffle2k(const std::shared_ptr<yacl::link::Context> &lctx, size_t T,
-                    size_t num, bool CR_mode, bool cache) {
+auto Shuffle2k(const std::shared_ptr<yacl::link::Context> &lctx, size_t T,
+               size_t num, bool CR_mode) {
   auto rank = lctx->Rank();
 
-  SPDLOG_INFO("[P{}] T {} && num {}, working mode: {} && {} ", rank, T, num,
+  SPDLOG_INFO("[P{}] T {} && num {}, working mode: {} ", rank, T, num,
               (CR_mode ? std::string("Real Correlated Randomness")
-                       : std::string("Fake Correlated Randomness")),
-              (cache ? std::string("Cache") : std::string("No Cache")));
+                       : std::string("Fake Correlated Randomness")));
 
   auto context = std::make_shared<Context>(lctx);
   SetupContext(context, CR_mode /* fake CR model or real CR model */);
 
   auto prot = context->GetState<Protocol>();
+  auto cr = context->GetState<Correlation>();
 
-  if (cache) {
-    auto shares = prot->RandA(num, true);
-    auto shuffle = prot->ShuffleA_2k(T, shares, true);
-    auto result = prot->A2P(shuffle, true);
+  auto shares = prot->RandA(num, true);
+  auto shuffle = prot->ShuffleA_2k(T, shares, true);
 
-    context->GetState<Correlation>()->force_cache();
+  auto ShuffleGetVec = cr->GetShuffleGetShape();
+  auto ShuffleSetVec = cr->GetShuffleSetShape();
+
+  auto get_batch_size = ShuffleGetVec.size();
+  auto set_batch_size = ShuffleSetVec.size();
+
+  auto get_T = ShuffleGetVec[0] >> 8;
+  auto get_repeat = ShuffleGetVec[0] & 0xFF;
+
+  auto set_T = ShuffleSetVec[0] >> 8;
+  auto set_repeat = ShuffleSetVec[0] & 0xFF;
+
+  SPDLOG_INFO("[P{}] ShuffleGet batch size {} && T size {} && repeat {} ", rank,
+              get_batch_size, get_T, get_repeat);
+  SPDLOG_INFO("[P{}] ShuffleSet batch size {} && T size {} && repeat {} ", rank,
+              set_batch_size, set_T, set_repeat);
+
+  TIMER_N_COMM_START(NDSS_shuffle_offline);
+
+  std::vector<ShuffleSTy> vec_SS;
+  std::vector<ShuffleGTy> vec_SG;
+  if (rank == 0) {
+    vec_SG = cr->BatchShuffleGet(get_batch_size, get_T, get_repeat);
+    vec_SS = cr->BatchShuffleSet(set_batch_size, set_T, set_repeat);
+  } else {
+    vec_SS = cr->BatchShuffleSet(set_batch_size, set_T, set_repeat);
+    vec_SG = cr->BatchShuffleGet(get_batch_size, get_T, get_repeat);
   }
+  TIMER_N_COMM_END_PRINT(NDSS_shuffle_offline);
 
-  auto shares = prot->RandA(num);
-  TIMER_N_COMM_START(NDSS_shuffle);
-  auto shuffle = prot->ShuffleA_2k(T, shares);
-  YACL_ENFORCE(prot->NdssDelayCheck());
-  TIMER_N_COMM_END_PRINT(NDSS_shuffle);
-
-  auto result = prot->A2P(shuffle);
-  auto plaintext = prot->A2P(shares);
-  return std::make_pair(result, plaintext);
+  return std::make_pair(vec_SS, vec_SG);
 }
 
 struct ArgPack {
   uint32_t T;
   uint32_t num;
   uint32_t CR_mode;
-  uint32_t cache;
 
   bool operator==(const ArgPack &other) const {
-    return (T == other.T) && (num == other.num) && (CR_mode == other.CR_mode) &&
-           (cache == other.cache);
+    return (T == other.T) && (num == other.num) && (CR_mode == other.CR_mode);
   }
   bool operator!=(const ArgPack &other) const { return !(*this == other); }
 };
 
 bool SyncTask(const std::shared_ptr<yacl::link::Context> &lctx, uint32_t T,
-              uint32_t num, uint32_t CR_mode, uint32_t cache) {
-  ArgPack tmp = {T, num, CR_mode, cache};
+              uint32_t num, uint32_t CR_mode) {
+  ArgPack tmp = {T, num, CR_mode};
   auto bv = yacl::ByteContainerView(&tmp, sizeof(tmp));
 
   ArgPack remote;
@@ -133,7 +144,6 @@ int main(int argc, char **argv) {
   uint32_t small_power = cl_small.getValue();
   uint32_t big_power = cl_big.getValue();
   bool CR_mode = cl_CR.getValue();
-  bool cache = cl_cache.getValue();
 
   YACL_ENFORCE(0 < small_power && small_power <= big_power);
   uint32_t T = 1 << small_power;
@@ -142,33 +152,17 @@ int main(int argc, char **argv) {
   // lambda
   auto run_party = [&](uint32_t rank) {
     auto lctx = MakeLink(cl_parties.getValue(), rank);
-    SyncTask(lctx, T, num, CR_mode, cache);
+    SyncTask(lctx, T, num, CR_mode);
 
     SPDLOG_INFO("PROTOCOL START");
-    auto [shuffle, plaintext] = NDSS_shuffle2k(lctx, T, num, CR_mode, cache);
+    auto [vec_SS, vec_SG] = Shuffle2k(lctx, T, num, CR_mode);
     SPDLOG_INFO("PROTOCOL END");
-
-    typedef decltype(std::declval<internal::PTy>().GetVal()) INTEGER;
-
-    auto shuffle_span = absl::MakeSpan(
-        reinterpret_cast<INTEGER *>(shuffle.data()), shuffle.size());
-    auto plaintext_span = absl::MakeSpan(
-        reinterpret_cast<INTEGER *>(plaintext.data()), plaintext.size());
-
-    std::sort(shuffle_span.begin(), shuffle_span.end());
-    std::sort(plaintext_span.begin(), plaintext_span.end());
-
-    for (size_t i = 0; i < num; ++i) {
-      YACL_ENFORCE(shuffle_span[i] == plaintext_span[i]);
-    }
-
-    SPDLOG_INFO("Double Check Done");
+    return std::make_pair(vec_SS, vec_SG);
   };
 
   if (alone == true) {
     auto task0 = std::async(run_party, 0);
     auto task1 = std::async(run_party, 1);
-
     task0.get();
     task1.get();
   } else {
