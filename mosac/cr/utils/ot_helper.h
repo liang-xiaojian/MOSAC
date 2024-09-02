@@ -14,29 +14,29 @@ class OtHelper {
     ot_receiver_ = ot_receiver;
   }
 
-  void MulPPSend(std::shared_ptr<Connection> conn, absl::Span<internal::PTy> b,
+  void MulPPSend(std::shared_ptr<Connection>& conn, absl::Span<internal::PTy> b,
                  absl::Span<internal::PTy> c);
 
-  void MulPPRecv(std::shared_ptr<Connection> conn, absl::Span<internal::PTy> a,
+  void MulPPRecv(std::shared_ptr<Connection>& conn, absl::Span<internal::PTy> a,
                  absl::Span<internal::PTy> c);
 
-  void BeaverTriple(std::shared_ptr<Connection> conn,
+  void BeaverTriple(std::shared_ptr<Connection>& conn,
                     absl::Span<internal::PTy> a, absl::Span<internal::PTy> b,
                     absl::Span<internal::PTy> c);
 
   // a * b = c && A * b = C
-  void MulPPExtendSend(std::shared_ptr<Connection> conn,
+  void MulPPExtendSend(std::shared_ptr<Connection>& conn,
                        absl::Span<internal::PTy> b, absl::Span<internal::PTy> c,
                        absl::Span<internal::PTy> C);
 
   // a * b = c && A * b = C
-  void MulPPExtendRecv(std::shared_ptr<Connection> conn,
+  void MulPPExtendRecv(std::shared_ptr<Connection>& conn,
                        absl::Span<internal::PTy> a, absl::Span<internal::PTy> c,
                        absl::Span<internal::PTy> A,
                        absl::Span<internal::PTy> C);
 
   // a * b = c && A * b = C
-  void BeaverTripleExtend(std::shared_ptr<Connection> conn,
+  void BeaverTripleExtend(std::shared_ptr<Connection>& conn,
                           absl::Span<internal::PTy> a,
                           absl::Span<internal::PTy> b,
                           absl::Span<internal::PTy> c,
@@ -44,45 +44,55 @@ class OtHelper {
                           absl::Span<internal::PTy> C);
 
   // a * b = c && A * b = C (with given b)
-  void MulPPExtendSendWithChosenB(std::shared_ptr<Connection> conn,
+  void MulPPExtendSendWithChosenB(std::shared_ptr<Connection>& conn,
                                   absl::Span<const internal::PTy> b,
                                   absl::Span<internal::PTy> c,
                                   absl::Span<internal::PTy> C);
 
   // a * b = c && A * b = C (with given b)
-  void MulPPExtendRecvWithChosenB(std::shared_ptr<Connection> conn,
+  void MulPPExtendRecvWithChosenB(std::shared_ptr<Connection>& conn,
                                   absl::Span<internal::PTy> a,
                                   absl::Span<internal::PTy> c,
                                   absl::Span<internal::PTy> A,
                                   absl::Span<internal::PTy> C);
 
   // a * b = c && A * b = C (with given b)
-  void BeaverTripleExtendWithChosenB(std::shared_ptr<Connection> conn,
+  void BeaverTripleExtendWithChosenB(std::shared_ptr<Connection>& conn,
                                      absl::Span<internal::PTy> a,
                                      absl::Span<const internal::PTy> b,
                                      absl::Span<internal::PTy> c,
                                      absl::Span<internal::PTy> A,
                                      absl::Span<internal::PTy> C);
 
-  void BaseVoleSend(std::shared_ptr<Connection> conn, internal::PTy delta,
+  void BaseVoleSend(std::shared_ptr<Connection>& conn, internal::PTy delta,
                     absl::Span<internal::PTy> c);
 
-  void BaseVoleRecv(std::shared_ptr<Connection> conn,
+  void BaseVoleRecv(std::shared_ptr<Connection>& conn,
                     absl::Span<internal::PTy> a, absl::Span<internal::PTy> b);
 
-  void ShuffleSend(std::shared_ptr<Connection> conn,
+  void ShuffleSend(std::shared_ptr<Connection>& conn,
                    absl::Span<const size_t> perm,
                    absl::Span<internal::PTy> delta, size_t repeat = 1);
 
-  void ShuffleRecv(std::shared_ptr<Connection> conn,
+  void ShuffleRecv(std::shared_ptr<Connection>& conn,
                    absl::Span<internal::PTy> a, absl::Span<internal::PTy> b,
                    size_t repeat = 1);
 
-  void ASTSend(std::shared_ptr<Connection> conn, absl::Span<const size_t> perm,
+  void BatchShuffleSend(std::shared_ptr<Connection>& conn, size_t total_num,
+                        size_t per_size, size_t repeat,
+                        const std::vector<std::vector<size_t>>& perms,
+                        std::vector<std::vector<internal::PTy>>& vec_delta);
+
+  void BatchShuffleRecv(std::shared_ptr<Connection>& conn, size_t total_num,
+                        size_t per_size, size_t repeat,
+                        std::vector<std::vector<internal::PTy>>& vec_a,
+                        std::vector<std::vector<internal::PTy>>& vec_b);
+
+  void ASTSend(std::shared_ptr<Connection>& conn, absl::Span<const size_t> perm,
                absl::Span<const internal::ATy> r, absl::Span<internal::ATy> a,
                absl::Span<internal::ATy> b);
 
-  void ASTRecv(std::shared_ptr<Connection> conn,
+  void ASTRecv(std::shared_ptr<Connection>& conn,
                absl::Span<const internal::ATy> r, absl::Span<internal::ATy> a,
                absl::Span<internal::ATy> b);
 
@@ -92,7 +102,7 @@ class OtHelper {
                     std::vector<std::vector<internal::ATy>>& lhs,
                     std::vector<std::vector<internal::ATy>>& rhs);
 
-  void BatchASTRecv(std::shared_ptr<Connection> conn, size_t total_num,
+  void BatchASTRecv(std::shared_ptr<Connection>& conn, size_t total_num,
                     size_t per_size, absl::Span<const internal::ATy> r,
                     std::vector<std::vector<internal::ATy>>& lhs,
                     std::vector<std::vector<internal::ATy>>& rhs);

@@ -331,4 +331,75 @@ TEST(OtHelperTest, RepeatShuffleWork) {
   }
 }
 
+TEST(OtHelperTest, BatchShuffleWork) {
+  const size_t total_num = 1 << 4;
+  const size_t per_size = 1 << 10;
+  const size_t repeat = 2;
+
+  auto lctxs = SetupWorld(2);
+  auto prev0 = std::async([&] {
+    auto otSender = std::make_shared<YaclSsOtAdapter>(lctxs[0], true);
+    otSender->OneTimeSetup();
+
+    auto otReceiver = std::make_shared<YaclSsOtAdapter>(lctxs[0], false);
+    otReceiver->OneTimeSetup();
+
+    return std::make_pair(otSender, otReceiver);
+  });
+  auto prev1 = std::async([&] {
+    auto otReceiver = std::make_shared<YaclSsOtAdapter>(lctxs[1], false);
+    otReceiver->OneTimeSetup();
+
+    auto otSender = std::make_shared<YaclSsOtAdapter>(lctxs[1], true);
+    otSender->OneTimeSetup();
+
+    return std::make_pair(otSender, otReceiver);
+  });
+  auto ot0 = prev0.get();
+  auto ot1 = prev1.get();
+
+  auto rank0 = std::async([&] {
+    auto conn = std::make_shared<Connection>(*lctxs[0]);
+    auto ot_sender = ot0.first;
+    auto ot_receiver = ot0.second;
+
+    auto helper = OtHelper(ot_sender, ot_receiver);
+
+    std::vector<std::vector<size_t>> perms;
+    for (size_t i = 0; i < total_num; ++i) {
+      auto perm = GenPerm(per_size);
+      perms.emplace_back(std::move(perm));
+    }
+    std::vector<std::vector<internal::PTy>> vec_delta;
+    helper.BatchShuffleSend(conn, total_num, per_size, repeat, perms,
+                            vec_delta);
+    return std::make_tuple(perms, vec_delta);
+  });
+  auto rank1 = std::async([&] {
+    auto conn = std::make_shared<Connection>(*lctxs[1]);
+    auto ot_sender = ot1.first;
+    auto ot_receiver = ot1.second;
+
+    auto helper = OtHelper(ot_sender, ot_receiver);
+
+    std::vector<std::vector<internal::PTy>> vec_a;
+    std::vector<std::vector<internal::PTy>> vec_b;
+    helper.BatchShuffleRecv(conn, total_num, per_size, repeat, vec_a, vec_b);
+    return std::make_tuple(vec_a, vec_b);
+  });
+
+  auto [perms, vec_delta] = rank0.get();
+  auto [vec_a, vec_b] = rank1.get();
+
+  for (size_t k = 0; k < total_num; ++k) {
+    auto& perm = perms[k];
+    auto& delta = vec_delta[k];
+    auto& a = vec_a[k];
+    auto& b = vec_b[k];
+    for (size_t i = 0; i < per_size; ++i) {
+      EXPECT_EQ(delta[i] + a[perm[i]] + b[i], internal::PTy(0));
+    }
+  }
+}
+
 }  // namespace mosac::ot
