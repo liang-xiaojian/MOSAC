@@ -49,15 +49,16 @@ bazel test -c opt //... # run all test (with -O2)
 
 examples
 ```sh
-bazel run -c opt //mosac/example:memory_example.cc # secure shuffle in memory model
-bazel run -c opt //mosac/example:socket_example.cc -- --rank=0/1 --num=shuffle_size --CR=0/1 --cache=0/1 # secure shuffle in socket model
-bazel run -c opt //mosac/example:AST2k_offline_example.cc -- --rank=0/1 --small_power=small_two_power --big_power=big_two_power --CR=0/1 # secure shuffle (offline bench benchmark)
-bazel run -c opt //mosac/example:NDSS_online_example.cc -- --rank=0/1 --small_power=small_two_power --big_power=big_two_power --CR=0/1 --cache=0/1 # NDSS shuffle (online benchmark)
-bazel run -c opt //mosac/example:NDSS_offline_example.cc -- --rank=0/1 --small_power=small_two_power --big_power=big_two_power --CR=0/1 # NDSS shuffle (offline benchmark)
+bazel run -c opt //mosac/example:memory_example # secure shuffle in memory model (PoC)
+bazel run -c opt //mosac/example:socket_example -- --rank=0/1 --num=shuffle_size --CR=0/1 --cache=0/1 # secure shuffle in socket model
+bazel run -c opt //mosac/example:AST2k_offline_example -- --rank=0/1 --small_power=small_two_power --big_power=big_two_power --CR=0/1 # secure shuffle (offline bench benchmark)
+bazel run -c opt //mosac/example:NDSS_online_example -- --rank=0/1 --small_power=small_two_power --big_power=big_two_power --CR=0/1 --cache=0/1 # NDSS shuffle (online benchmark)
+bazel run -c opt //mosac/example:NDSS_offline_example -- --rank=0/1 --small_power=small_two_power --big_power=big_two_power --CR=0/1 # NDSS shuffle (offline benchmark)
 ```
 
 command line flags
 ```sh
+--alone 0/1                 --> 1 for single terminal to create two threads to run the protocol (default 0)
 --rank 0/1                  --> 0 for party0, while 1 for party1 (memory mode would ignore this flag)
 --num shuffle_size          --> size of shuffle elements
 --CR 0/1                    --> 0 for fake correlation randomness (use PRG to simulate offline randomness), while 1 for true correlation randomness (use OT and VOLE to generate offline randomness)
