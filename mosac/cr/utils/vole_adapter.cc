@@ -245,7 +245,7 @@ void WolverineVoleAdapter::BootstrapInplaceRecv(absl::Span<internal::PTy> pre_a,
                                                 absl::Span<internal::PTy> pre_b,
                                                 absl::Span<internal::PTy> a,
                                                 absl::Span<internal::PTy> b) {
-  YACL_ENFORCE(is_sender_ == true);
+  YACL_ENFORCE(is_sender_ == false);
   YACL_ENFORCE(pre_a.size() >= vole_param_.base_vole_num_);
   YACL_ENFORCE(pre_b.size() >= vole_param_.base_vole_num_);
   auto ot_num = vole_param_.mp_vole_ot_num_;
