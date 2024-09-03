@@ -93,8 +93,10 @@ std::pair<std::vector<uint128_t>, std::vector<uint128_t>> ShuffleSend_internal(
   // auto ot_store = yc::MakeOtRecvStore(choices, ot_buff);
   for (size_t i = 0; i < per_size; ++i) {
     auto ot_recv = ot_store.NextSlice(ot_num);
-    yc::GywzOtExtRecv(conn, ot_recv, per_size, perm[i],
-                      absl::MakeSpan(punctured_msgs));
+    yc::GywzOtExtRecv_fixed_index(conn, ot_recv, per_size,
+                                  absl::MakeSpan(punctured_msgs));
+    // yc::GywzOtExtRecv(conn, ot_recv, per_size, perm[i],
+    //                   absl::MakeSpan(punctured_msgs));
     // break correlation
     auto extend = SeedExtend(absl::MakeSpan(punctured_msgs), repeat + 1);
     // set punctured point to be zero
@@ -159,7 +161,9 @@ std::pair<std::vector<uint128_t>, std::vector<uint128_t>> ShuffleRecv_internal(
 
   for (size_t i = 0; i < per_size; ++i) {
     auto ot_send = ot_store.NextSlice(ot_num);
-    yc::GywzOtExtSend(conn, ot_send, per_size, absl::MakeSpan(all_msgs));
+    yc::GywzOtExtSend_fixed_index(conn, ot_send, per_size,
+                                  absl::MakeSpan(all_msgs));
+    // yc::GywzOtExtSend(conn, ot_send, per_size, absl::MakeSpan(all_msgs));
     // break correlation
     auto extend = SeedExtend(absl::MakeSpan(all_msgs), repeat + 1);
 
