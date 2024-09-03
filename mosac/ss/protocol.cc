@@ -281,6 +281,20 @@ void Protocol::NdssBufferAppend(absl::Span<const ATy> in) {
   auto [in_val, in_mac] = Unpack(in);
   ndss_val_buff_.emplace_back(std::move(in_val));
   ndss_mac_buff_.emplace_back(std::move(in_mac));
+
+  const size_t DelayMaxSize = 1 << 24;
+
+  size_t ndss_size = 0;
+  for (const auto& sub_buff : ndss_val_buff_) {
+    ndss_size = ndss_size + sub_buff.size();
+  }
+
+  if (ndss_size >= DelayMaxSize) {
+    SPDLOG_DEBUG("Ndss Buffer size is {}, greater than {}", ndss_size,
+                 DelayMaxSize);
+    auto flag = NdssDelayCheck();
+    YACL_ENFORCE(flag == true);
+  }
 }
 
 void Protocol::NdssBufferAppend(const ATy& in) {
@@ -331,6 +345,10 @@ bool Protocol::NdssDelayCheck() {
   auto remote_bv = conn->ExchangeWithCommit(bv);
   bool flag = (bv == yacl::ByteContainerView(remote_bv));
   SPDLOG_INFO("NdssDelayCheck is {}", flag);
+
+  ndss_val_buff_.clear();
+  ndss_mac_buff_.clear();
+
   return flag;
 }
 
