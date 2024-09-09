@@ -105,6 +105,7 @@ std::shared_ptr<yacl::link::Context> MakeLink(const std::string &parties,
     lctx_desc.parties.emplace_back(id, hosts[rank]);
   }
   lctx_desc.throttle_window_size = 0;
+  lctx_desc.http_timeout_ms = 60 * 1000;  // 1 min
   auto lctx = yacl::link::FactoryBrpc().CreateContext(lctx_desc, rank);
   lctx->ConnectToMesh();
   return lctx;

@@ -30,6 +30,7 @@ inline std::vector<std::shared_ptr<yl::Context>> SetupBrpcWorld(
     ctx_desc.parties.push_back({party_id, host});
   }
   ctx_desc.throttle_window_size = 0;
+  ctx_desc.http_timeout_ms = 60 * 1000;  // 1 min
 
   std::vector<std::shared_ptr<yl::Context>> contexts(world_size);
   for (size_t rank = 0; rank < world_size; rank++) {

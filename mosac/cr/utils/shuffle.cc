@@ -3,6 +3,7 @@
 #include "yacl/base/dynamic_bitset.h"
 #include "yacl/crypto/base/aes/aes_intrinsics.h"
 #include "yacl/crypto/base/aes/aes_opt.h"
+#include "yacl/crypto/base/hash/hash_utils.h"
 #include "yacl/crypto/primitives/ot/gywz_ote.h"
 #include "yacl/crypto/utils/rand.h"
 #include "yacl/math/gadget.h"
