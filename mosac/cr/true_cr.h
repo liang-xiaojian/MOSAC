@@ -24,7 +24,10 @@ class TrueCorrelation : public Correlation {
   std::shared_ptr<vole::VoleAdapter> vole_sender_;
   std::shared_ptr<vole::VoleAdapter> vole_receiver_;
 
+  // delay check
   std::vector<internal::PTy> delay_check_buff_;
+  std::vector<std::vector<internal::PTy>> val_delay_check_buff_;
+  std::vector<std::vector<internal::PTy>> mac_delay_check_buff_;
 
   TrueCorrelation(std::shared_ptr<Context> ctx) : Correlation(ctx) {}
 
@@ -194,6 +197,9 @@ class TrueCorrelation : public Correlation {
                     std::vector<std::vector<internal::ATy>>& out_vec_b);
 
   bool DelayCheck() override;
+
+  void AShareLineCombineDelayCheck();
+  void AShareLineCombineDelayCheck(absl::Span<const internal::ATy> in);
   // TODO:
   // internal::PTy SingleOpenAndCheck(const internal::ATy& in);
 };
