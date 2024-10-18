@@ -1,12 +1,8 @@
 #pragma once
 
-#pragma once
-
 #include "yacl/base/dynamic_bitset.h"
 #include "yacl/crypto/primitives/ot/base_ot.h"
-#include "yacl/crypto/primitives/ot/kos_ote.h"
 #include "yacl/crypto/primitives/ot/ot_store.h"
-#include "yacl/crypto/primitives/ot/softspoken_ote.h"
 #include "yacl/crypto/utils/rand.h"
 
 namespace mosac::ot {

@@ -40,8 +40,6 @@ mosac_cc_library(
         "@yacl//yacl/base:dynamic_bitset",
         "@yacl//yacl/base:buffer",
         "@yacl//yacl/crypto/primitives/ot:base_ot",
-        "@yacl//yacl/crypto/primitives/ot:kos_ote",
-        "@yacl//yacl/crypto/primitives/ot:softspoken_ote",
         "@yacl//yacl/crypto/primitives/ot:ot_store",
         "@yacl//yacl/crypto/utils:rand",
         "@yacl//yacl/crypto/base/hash:hash_utils",

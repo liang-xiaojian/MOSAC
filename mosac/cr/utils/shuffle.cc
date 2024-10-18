@@ -72,7 +72,7 @@ std::pair<std::vector<uint128_t>, std::vector<uint128_t>> ShuffleSend_internal(
   const size_t full_size = per_size * repeat;
   YACL_ENFORCE(perm.size() == per_size);
   YACL_ENFORCE(delta.size() == full_size);
-  YACL_ENFORCE(repeat < kPrfKey.size());
+  YACL_ENFORCE(repeat <= kPrfKey.size());
 
   std::vector<internal::PTy> a(full_size, internal::PTy(0));
   std::vector<internal::PTy> b(full_size, internal::PTy(0));
@@ -85,19 +85,13 @@ std::pair<std::vector<uint128_t>, std::vector<uint128_t>> ShuffleSend_internal(
 
   const size_t ot_num = ym::Log2Ceil(per_size);
   const size_t required_ot = per_size * ot_num;
-  // std::vector<uint128_t> ot_buff(required_ot);
-  // yacl::dynamic_bitset<uint128_t> choices(required_ot);
 
   YACL_ENFORCE(ot_store.Size() == required_ot);
 
-  // ot_ptr->recv_rcot(absl::MakeSpan(ot_buff), choices);
-  // auto ot_store = yc::MakeOtRecvStore(choices, ot_buff);
   for (size_t i = 0; i < per_size; ++i) {
     auto ot_recv = ot_store.NextSlice(ot_num);
     yc::GywzOtExtRecv_fixed_index(conn, ot_recv, per_size,
                                   absl::MakeSpan(punctured_msgs));
-    // yc::GywzOtExtRecv(conn, ot_recv, per_size, perm[i],
-    //                   absl::MakeSpan(punctured_msgs));
     // break correlation
     auto extend = SeedExtend(absl::MakeSpan(punctured_msgs), repeat + 1);
     // set punctured point to be zero
@@ -142,7 +136,7 @@ std::pair<std::vector<uint128_t>, std::vector<uint128_t>> ShuffleRecv_internal(
 
   YACL_ENFORCE(a.size() == full_size);
   YACL_ENFORCE(b.size() == full_size);
-  YACL_ENFORCE(repeat < kPrfKey.size());
+  YACL_ENFORCE(repeat <= kPrfKey.size());
 
   internal::op::Zeros(a);
 
@@ -154,9 +148,6 @@ std::pair<std::vector<uint128_t>, std::vector<uint128_t>> ShuffleRecv_internal(
 
   const size_t ot_num = ym::Log2Ceil(per_size);
   const size_t required_ot = per_size * ot_num;
-  // std::vector<uint128_t> ot_buff(required_ot);
-  // ot_ptr->send_rcot(absl::MakeSpan(ot_buff));
-  // auto ot_store = yc::MakeCompactOtSendStore(ot_buff, ot_ptr->GetDelta());
 
   YACL_ENFORCE(ot_store.Size() == required_ot);
 
@@ -164,7 +155,6 @@ std::pair<std::vector<uint128_t>, std::vector<uint128_t>> ShuffleRecv_internal(
     auto ot_send = ot_store.NextSlice(ot_num);
     yc::GywzOtExtSend_fixed_index(conn, ot_send, per_size,
                                   absl::MakeSpan(all_msgs));
-    // yc::GywzOtExtSend(conn, ot_send, per_size, absl::MakeSpan(all_msgs));
     // break correlation
     auto extend = SeedExtend(absl::MakeSpan(all_msgs), repeat + 1);
 
@@ -331,8 +321,6 @@ bool BatchShuffleSend_check(std::shared_ptr<Connection>& conn,
   }
 
   auto hash_value = hasher.CumulativeHash();
-  // auto hash_value = yacl::crypto::Sm3(yacl::ByteContainerView(
-  //     check_b.data(), check_b.size() * sizeof(uint128_t)));
   auto remote_hash_value =
       conn->ExchangeWithCommit(yacl::ByteContainerView(hash_value));
 
@@ -367,8 +355,6 @@ bool BatchShuffleRecv_check(std::shared_ptr<Connection>& conn,
       "shuffle: consistency check");
 
   auto hash_value = hasher.CumulativeHash();
-  // auto hash_value = yacl::crypto::Sm3(yacl::ByteContainerView(
-  //     check_b.data(), check_b.size() * sizeof(uint128_t)));
   auto remote_hash_value =
       conn->ExchangeWithCommit(yacl::ByteContainerView(hash_value));
 
@@ -602,8 +588,6 @@ bool BatchASTSend_check(std::shared_ptr<Connection>& conn,
   }
 
   auto hash_value = hasher.CumulativeHash();
-  // auto hash_value = yacl::crypto::Sm3(yacl::ByteContainerView(
-  //     check_b.data(), check_b.size() * sizeof(uint128_t)));
   auto remote_hash_value =
       conn->ExchangeWithCommit(yacl::ByteContainerView(hash_value));
 
@@ -751,8 +735,6 @@ bool BatchASTRecv_check(std::shared_ptr<Connection>& conn,
       "shuffle: consistency check");
 
   auto hash_value = hasher.CumulativeHash();
-  // auto hash_value = yacl::crypto::Sm3(yacl::ByteContainerView(
-  //     check_b.data(), check_b.size() * sizeof(uint128_t)));
   auto remote_hash_value =
       conn->ExchangeWithCommit(yacl::ByteContainerView(hash_value));
 
@@ -800,7 +782,6 @@ void ASTRecv(std::shared_ptr<Connection>& conn,
   auto ot_store = yc::MakeCompactOtSendStore(ot_buff, ot_ptr->GetDelta());
 
   auto [check_a, check_b] = ASTRecv_internal(conn, ot_store, r, lhs, rhs);
-  // auto flag = ASTRecv_check(conn, check_a, check_b);
   std::vector<std::vector<uint128_t>> check_aa(1, check_a);
   std::vector<std::vector<uint128_t>> check_bb(1, check_b);
   auto flag = BatchASTRecv_check(conn, check_aa, check_bb);

@@ -58,6 +58,8 @@ auto AST2k(const std::shared_ptr<yacl::link::Context> &lctx, size_t T,
     cr->NMul(absl::MakeSpan(b));
     cr->NMul(absl::MakeSpan(remote_a));
     cr->NMul(absl::MakeSpan(remote_b));
+
+    cr->BeaverTriple(num * 2 + 2);
   } else {
     auto [remote_a, remote_b] = cr->ASTGet_2k(T, num);
     auto [perm, a, b] = cr->ASTSet_2k(T, num);
@@ -66,6 +68,8 @@ auto AST2k(const std::shared_ptr<yacl::link::Context> &lctx, size_t T,
     cr->NMul(absl::MakeSpan(remote_b));
     cr->NMul(absl::MakeSpan(a));
     cr->NMul(absl::MakeSpan(b));
+
+    cr->BeaverTriple(num * 2 + 2);
   }
   cr->DelayCheck();
   TIMER_N_COMM_END_PRINT(AST2k_2_side);

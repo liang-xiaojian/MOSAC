@@ -8,6 +8,7 @@
 
 namespace mosac {
 
+// Beaver Triple Type
 struct BeaverTy {
   std::vector<internal::ATy> a;
   std::vector<internal::ATy> b;
@@ -26,6 +27,7 @@ struct BeaverTy {
   }
 };
 
+// Authorication Type
 struct AuthTy {
   std::vector<internal::ATy> data;
   AuthTy() { ; }
@@ -33,6 +35,7 @@ struct AuthTy {
   AuthTy(std::vector<internal::ATy>&& in) { data = std::move(in); }
 };
 
+// Shuffle Set Type
 struct ShuffleSTy {
   std::vector<internal::PTy> delta;
   std::vector<size_t> perm;
@@ -47,6 +50,7 @@ struct ShuffleSTy {
   }
 };
 
+// Shuffle Get Type
 struct ShuffleGTy {
   std::vector<internal::PTy> a;
   std::vector<internal::PTy> b;
