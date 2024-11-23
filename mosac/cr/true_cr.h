@@ -202,6 +202,17 @@ class TrueCorrelation : public Correlation {
   void AShareLineCombineDelayCheck(absl::Span<const internal::ATy> in);
   // TODO:
   // internal::PTy SingleOpenAndCheck(const internal::ATy& in);
+ private:
+  uint64_t rand_set_num{0};
+  uint64_t rand_get_num{0};
+  uint64_t auth_set_num{0};
+  uint64_t auth_get_num{0};
+
+ public:
+  uint64_t GetRandSetNum() const { return rand_set_num; }
+  uint64_t GetRandGetNum() const { return rand_get_num; }
+  uint64_t GetAuthSetNum() const { return auth_set_num; }
+  uint64_t GetAuthGetNum() const { return auth_get_num; }
 };
 
 }  // namespace mosac

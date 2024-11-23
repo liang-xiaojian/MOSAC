@@ -96,3 +96,39 @@ mosac_cc_binary(
         ":macro",
     ],
 )
+
+mosac_cc_binary(
+    name = "NMul_offline_example",
+    srcs = ["NMul_offline_example.cc"],
+    deps = [
+        "//mosac/context:register",
+        "//mosac/ss:protocol",
+        "//mosac/utils:test_util",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/base:int128",
+        "@yacl//yacl/link",
+        "@yacl//yacl/utils:serialize",
+        "@yacl//yacl/utils:parallel",
+        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/strings",
+        ":macro",
+    ],
+)
+
+mosac_cc_binary(
+    name = "AShare_example",
+    srcs = ["AShare_example.cc"],
+    deps = [
+        "//mosac/context:register",
+        "//mosac/ss:protocol",
+        "//mosac/utils:test_util",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/base:int128",
+        "@yacl//yacl/link",
+        "@yacl//yacl/utils:serialize",
+        "@yacl//yacl/utils:parallel",
+        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/strings",
+        ":macro",
+    ],
+)

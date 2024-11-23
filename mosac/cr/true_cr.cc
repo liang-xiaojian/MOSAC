@@ -158,6 +158,8 @@ void TrueCorrelation::RandomSet(absl::Span<internal::ATy> out) {
   // Pack
   internal::Pack(absl::MakeConstSpan(a), absl::MakeConstSpan(mac),
                  absl::MakeSpan(out));
+
+  rand_set_num += out.size();
 }
 
 void TrueCorrelation::RandomGet(absl::Span<internal::ATy> out) {
@@ -169,6 +171,8 @@ void TrueCorrelation::RandomGet(absl::Span<internal::ATy> out) {
   auto zeros = internal::op::Zeros(num);
   internal::Pack(absl::MakeConstSpan(zeros), absl::MakeConstSpan(c),
                  absl::MakeSpan(out));
+
+  rand_get_num += out.size();
 }
 
 void TrueCorrelation::RandomAuth(absl::Span<internal::ATy> out) {
@@ -403,6 +407,8 @@ void TrueCorrelation::AuthSet(absl::Span<const internal::PTy> in,
       absl::MakeSpan(mac));
   auto ret = internal::Pack(in, mac);
   memcpy(out.data(), ret.data(), out.size() * sizeof(internal::ATy));
+
+  auth_set_num += out.size();
 }
 
 void TrueCorrelation::AuthGet(absl::Span<internal::ATy> out) {
@@ -421,6 +427,8 @@ void TrueCorrelation::AuthGet(absl::Span<internal::ATy> out) {
                     absl::MakeSpan(mac));
   auto ret = internal::Pack(val, mac);
   memcpy(out.data(), ret.data(), ret.size() * sizeof(internal::ATy));
+
+  auth_get_num += out.size();
 }
 
 // Copy from A2P
