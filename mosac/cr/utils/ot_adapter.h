@@ -103,10 +103,11 @@ class YaclSsOtAdapter : public OtAdapter {
     ctx_ = ctx;
     is_sender_ = is_sender;
     if (is_sender) {
-      ss_ot_sender_ = std::make_unique<yc::SoftspokenOtExtSender>(2, 0, true);
+      ss_ot_sender_ =
+          std::make_unique<yc::SoftspokenOtExtSender>(2, 1024, true);
     } else {
       ss_ot_receiver_ =
-          std::make_unique<yc::SoftspokenOtExtReceiver>(2, 0, true);
+          std::make_unique<yc::SoftspokenOtExtReceiver>(2, 1024, true);
     }
   }
 

@@ -39,17 +39,25 @@ class TrueCorrelation : public Correlation {
     auto conn = ctx_->GetConnection();
     if (ctx_->GetRank() == 0) {
       ot_sender_ = std::make_shared<ot::YaclSsOtAdapter>(conn->Spawn(), true);
+      // ot_sender_ =
+      //     std::make_shared<ot::YaclFerretOtAdapter>(conn->Spawn(), true);
       ot_sender_->OneTimeSetup();
 
       ot_receiver_ =
           std::make_shared<ot::YaclSsOtAdapter>(conn->Spawn(), false);
+      // ot_receiver_ =
+      //     std::make_shared<ot::YaclFerretOtAdapter>(conn->Spawn(), false);
       ot_receiver_->OneTimeSetup();
     } else {
       ot_receiver_ =
           std::make_shared<ot::YaclSsOtAdapter>(conn->Spawn(), false);
+      // ot_receiver_ =
+      //     std::make_shared<ot::YaclFerretOtAdapter>(conn->Spawn(), false);
       ot_receiver_->OneTimeSetup();
 
       ot_sender_ = std::make_shared<ot::YaclSsOtAdapter>(conn->Spawn(), true);
+      // ot_sender_ =
+      //     std::make_shared<ot::YaclFerretOtAdapter>(conn->Spawn(), true);
       ot_sender_->OneTimeSetup();
     }
 

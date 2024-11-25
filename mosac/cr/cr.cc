@@ -2,6 +2,10 @@
 
 namespace mosac {
 
+namespace {
+constexpr uint64_t kBatchShuffle = 2048;
+}
+
 // register string
 const std::string Correlation::id = std::string("Correlation");
 
@@ -112,30 +116,61 @@ ASTGTy Correlation::ASTGet(size_t num) {
 std::vector<ShuffleSTy> Correlation::BatchShuffleSet(size_t batch_num,
                                                      size_t per_size,
                                                      size_t repeat) {
-  std::vector<std::vector<size_t>> perms;
-  for (size_t i = 0; i < batch_num; ++i) {
-    auto perm = GenPerm(per_size);
-    perms.emplace_back(std::move(perm));
-  }
-  std::vector<std::vector<internal::PTy>> vec_delta;
-  BatchShuffleSet(batch_num, per_size, repeat, perms, vec_delta);
-
   std::vector<ShuffleSTy> ret;
-  for (size_t i = 0; i < batch_num; ++i) {
-    ret.emplace_back(std::move(vec_delta[i]), std::move(perms[i]));
+  auto small_batch_num = yacl::math::DivCeil(batch_num, kBatchShuffle);
+
+  for (size_t _ = 0; _ < small_batch_num; ++_) {
+    auto remain = std::min(kBatchShuffle, batch_num - _ * kBatchShuffle);
+    std::vector<std::vector<size_t>> perms;
+    for (size_t i = 0; i < remain; ++i) {
+      auto perm = GenPerm(per_size);
+      perms.emplace_back(std::move(perm));
+    }
+    std::vector<std::vector<internal::PTy>> vec_delta;
+    BatchShuffleSet(remain, per_size, repeat, perms, vec_delta);
+
+    for (size_t i = 0; i < remain; ++i) {
+      ret.emplace_back(std::move(vec_delta[i]), std::move(perms[i]));
+    }
   }
+
+  // std::vector<std::vector<size_t>> perms;
+  // for (size_t i = 0; i < batch_num; ++i) {
+  //   auto perm = GenPerm(per_size);
+  //   perms.emplace_back(std::move(perm));
+  // }
+  // std::vector<std::vector<internal::PTy>> vec_delta;
+  // BatchShuffleSet(batch_num, per_size, repeat, perms, vec_delta);
+
+  // for (size_t i = 0; i < batch_num; ++i) {
+  //   ret.emplace_back(std::move(vec_delta[i]), std::move(perms[i]));
+  // }
   return ret;
 }
 std::vector<ShuffleGTy> Correlation::BatchShuffleGet(size_t batch_num,
                                                      size_t per_size,
                                                      size_t repeat) {
-  std::vector<std::vector<internal::PTy>> vec_a;
-  std::vector<std::vector<internal::PTy>> vec_b;
-  BatchShuffleGet(batch_num, per_size, repeat, vec_a, vec_b);
   std::vector<ShuffleGTy> ret;
-  for (size_t i = 0; i < batch_num; ++i) {
-    ret.emplace_back(std::move(vec_a[i]), std::move(vec_b[i]));
+  auto small_batch_num = yacl::math::DivCeil(batch_num, kBatchShuffle);
+
+  for (size_t _ = 0; _ < small_batch_num; ++_) {
+    auto remain = std::min(kBatchShuffle, batch_num - _ * kBatchShuffle);
+
+    std::vector<std::vector<internal::PTy>> vec_a;
+    std::vector<std::vector<internal::PTy>> vec_b;
+    BatchShuffleGet(remain, per_size, repeat, vec_a, vec_b);
+
+    for (size_t i = 0; i < remain; ++i) {
+      ret.emplace_back(std::move(vec_a[i]), std::move(vec_b[i]));
+    }
   }
+  // std::vector<std::vector<internal::PTy>> vec_a;
+  // std::vector<std::vector<internal::PTy>> vec_b;
+  // BatchShuffleGet(batch_num, per_size, repeat, vec_a, vec_b);
+  // std::vector<ShuffleGTy> ret;
+  // for (size_t i = 0; i < batch_num; ++i) {
+  //   ret.emplace_back(std::move(vec_a[i]), std::move(vec_b[i]));
+  // }
   return ret;
 }
 

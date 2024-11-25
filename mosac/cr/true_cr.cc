@@ -8,6 +8,7 @@
 namespace mosac {
 
 namespace {
+constexpr size_t kBatchAST = 2048;
 const std::map<size_t, size_t> kExtend = {
     {1 << 4, 9},  {1 << 5, 8},  {1 << 6, 7},  {1 << 7, 6},  {1 << 8, 6},
     {1 << 9, 5},  {1 << 10, 5}, {1 << 11, 5}, {1 << 12, 4}, {1 << 13, 4},
@@ -865,8 +866,23 @@ std::vector<size_t> TrueCorrelation::ASTSet_2k(size_t T,
 
   std::vector<std::vector<internal::ATy>> vec_a_T_all;
   std::vector<std::vector<internal::ATy>> vec_b_T_all;
-  auto vec_perm_T_all =
-      ASTSet_batch_basic_2k(T_num * depth, T, vec_a_T_all, vec_b_T_all);
+  std::vector<std::vector<size_t>> vec_perm_T_all;
+
+  size_t total = T_num * depth;
+  size_t batch_num = yacl::math::DivCeil(total, kBatchAST);
+  for (size_t i = 0; i < batch_num; ++i) {
+    size_t remain = std::min(kBatchAST, total - i * kBatchAST);
+    std::vector<std::vector<internal::ATy>> cur_vec_a_T_all;
+    std::vector<std::vector<internal::ATy>> cur_vec_b_T_all;
+    auto cur_vec_perm_T_all =
+        ASTSet_batch_basic_2k(remain, T, cur_vec_a_T_all, cur_vec_b_T_all);
+
+    for (size_t j = 0; j < remain; ++j) {
+      vec_a_T_all.emplace_back(std::move(cur_vec_a_T_all[j]));
+      vec_b_T_all.emplace_back(std::move(cur_vec_b_T_all[j]));
+      vec_perm_T_all.emplace_back(std::move(cur_vec_perm_T_all[j]));
+    }
+  }
 
   std::vector<std::vector<internal::ATy>> vec_a_T(T_num);
   std::vector<std::vector<internal::ATy>> vec_b_T(T_num);
@@ -971,7 +987,22 @@ void TrueCorrelation::ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
 
   std::vector<std::vector<internal::ATy>> vec_a_T_all;
   std::vector<std::vector<internal::ATy>> vec_b_T_all;
-  ASTGet_batch_basic_2k(T_num * depth, T, vec_a_T_all, vec_b_T_all);
+
+  size_t total = T_num * depth;
+  size_t batch_num = yacl::math::DivCeil(total, kBatchAST);
+  for (size_t i = 0; i < batch_num; ++i) {
+    size_t remain = std::min(kBatchAST, total - i * kBatchAST);
+    std::vector<std::vector<internal::ATy>> cur_vec_a_T_all;
+    std::vector<std::vector<internal::ATy>> cur_vec_b_T_all;
+    ASTGet_batch_basic_2k(remain, T, cur_vec_a_T_all, cur_vec_b_T_all);
+
+    for (size_t j = 0; j < remain; ++j) {
+      vec_a_T_all.emplace_back(std::move(cur_vec_a_T_all[j]));
+      vec_b_T_all.emplace_back(std::move(cur_vec_b_T_all[j]));
+    }
+  }
+
+  // ASTGet_batch_basic_2k(T_num * depth, T, vec_a_T_all, vec_b_T_all);
 
   std::vector<std::vector<internal::ATy>> vec_a_T(T_num);
   std::vector<std::vector<internal::ATy>> vec_b_T(T_num);

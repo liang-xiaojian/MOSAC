@@ -222,6 +222,7 @@ mosac_cc_library(
         "//mosac/utils:field",
         "//mosac/utils:vec_op",
         "@yacl//yacl/crypto/primitives/ot:ot_store",
+        "@yacl//yacl/math:gadget",
     ],
 )
 
