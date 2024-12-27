@@ -1,5 +1,6 @@
 #include "mosac/cr/fake_cr.h"
 
+#include "mosac/cr/param.h"
 #include "mosac/utils/vec_op.h"
 
 namespace mosac {

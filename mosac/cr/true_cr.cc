@@ -1,5 +1,6 @@
 #include "mosac/cr/true_cr.h"
 
+#include "mosac/cr/param.h"
 #include "mosac/cr/utils/ot_helper.h"
 #include "mosac/ss/type.h"
 #include "mosac/utils/vec_op.h"
@@ -8,7 +9,6 @@
 namespace mosac {
 
 namespace {
-constexpr size_t kBatchAST = 2048;
 const std::map<size_t, size_t> kExtend = {
     {1 << 4, 9},  {1 << 5, 8},  {1 << 6, 7},  {1 << 7, 6},  {1 << 8, 6},
     {1 << 9, 5},  {1 << 10, 5}, {1 << 11, 5}, {1 << 12, 4}, {1 << 13, 4},
@@ -49,8 +49,22 @@ void TrueCorrelation::BeaverTriple(absl::Span<internal::ATy> a,
   internal::op::Rand(absl::MakeSpan(p_b));
 
   auto conn = ctx_->GetConnection();
-  ot::OtHelper(ot_sender_, ot_receiver_)
-      .BeaverTripleExtendWithChosenB(conn, p_a, p_b, p_c, p_A, p_C);
+
+  const auto ot_per_mul = 8 * sizeof(internal::PTy) * ot::kBeaverExtFactor;
+  const auto batch_size = yacl::math::DivCeil(param::kBatchOtSize, ot_per_mul);
+  const auto batch_num = yacl::math::DivCeil(num, batch_size);
+
+  for (size_t i = 0; i < batch_num; ++i) {
+    size_t remain = std::min(batch_size, num - i * batch_size);
+    auto p_subspan_a = p_a.subspan(i * batch_size, remain);
+    auto p_subspan_b = p_b.subspan(i * batch_size, remain);
+    auto p_subspan_c = p_c.subspan(i * batch_size, remain);
+    auto p_subspan_A = p_A.subspan(i * batch_size, remain);
+    auto p_subspan_C = p_C.subspan(i * batch_size, remain);
+    ot::OtHelper(ot_sender_, ot_receiver_)
+        .BeaverTripleExtendWithChosenB(conn, p_subspan_a, p_subspan_b,
+                                       p_subspan_c, p_subspan_A, p_subspan_C);
+  }
 
   std::vector<internal::ATy> auth_abcAC(num * 5);
   auto auth_abcAC_span = absl::MakeSpan(auth_abcAC);
@@ -232,7 +246,6 @@ void TrueCorrelation::BatchShuffleSet(
   //   auto& perm = perms[i];
   //   std::vector<internal::PTy> tmp_delta(per_size * repeat);
   //   ShuffleSet(absl::MakeConstSpan(perm), absl::MakeSpan(tmp_delta), repeat);
-
   //   vec_delta.emplace_back(std::move(tmp_delta));
   // }
 }
@@ -529,6 +542,11 @@ void TrueCorrelation::AShareLineCombineDelayCheck() {
 
   val_delay_check_buff_.clear();
   mac_delay_check_buff_.clear();
+
+  // early check
+  if (delay_check_buff_.size() > (1 << 19)) {
+    YACL_ENFORCE(DelayCheck() == true);
+  }
 }
 
 void TrueCorrelation::AShareLineCombineDelayCheck(
@@ -651,7 +669,18 @@ std::vector<internal::ATy> TrueCorrelation::Mul(
   auto a = std::vector<internal::ATy>(num, {0, 0});
   auto c = std::vector<internal::ATy>(num, {0, 0});
 
-  BeaverTripleWithChosenB(absl::MakeSpan(a), rhs, absl::MakeSpan(c));
+  const auto ot_per_mul = 8 * sizeof(internal::PTy) * ot::kBeaverExtFactor;
+  const auto small_batch_size =
+      yacl::math::DivCeil(param::kBatchOtSize, ot_per_mul);
+  const auto small_batch_num = yacl::math::DivCeil(num, small_batch_size);
+
+  for (size_t i = 0; i < small_batch_num; ++i) {
+    size_t remain = std::min(small_batch_size, num - i * small_batch_size);
+    auto a_subspan = absl::MakeSpan(a).subspan(i * small_batch_num, remain);
+    auto b_subspan = absl::MakeSpan(rhs).subspan(i * small_batch_num, remain);
+    auto c_subspan = absl::MakeSpan(c).subspan(i * small_batch_num, remain);
+    BeaverTripleWithChosenB(a_subspan, b_subspan, c_subspan);
+  }
 
   internal::op::Sub(
       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(lhs.data()),
@@ -869,9 +898,13 @@ std::vector<size_t> TrueCorrelation::ASTSet_2k(size_t T,
   std::vector<std::vector<size_t>> vec_perm_T_all;
 
   size_t total = T_num * depth;
-  size_t batch_num = yacl::math::DivCeil(total, kBatchAST);
+
+  const auto ot_per_ast = yacl::math::Log2Ceil(T) * T * findB(total);
+  const auto batch_size = yacl::math::DivCeil(param::kBatchOtSize, ot_per_ast);
+  size_t batch_num = yacl::math::DivCeil(total, batch_size);
+
   for (size_t i = 0; i < batch_num; ++i) {
-    size_t remain = std::min(kBatchAST, total - i * kBatchAST);
+    size_t remain = std::min(batch_size, total - i * batch_size);
     std::vector<std::vector<internal::ATy>> cur_vec_a_T_all;
     std::vector<std::vector<internal::ATy>> cur_vec_b_T_all;
     auto cur_vec_perm_T_all =
@@ -989,9 +1022,12 @@ void TrueCorrelation::ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
   std::vector<std::vector<internal::ATy>> vec_b_T_all;
 
   size_t total = T_num * depth;
-  size_t batch_num = yacl::math::DivCeil(total, kBatchAST);
+  const auto ot_per_ast = yacl::math::Log2Ceil(T) * T * findB(total);
+  const auto batch_size = yacl::math::DivCeil(param::kBatchOtSize, ot_per_ast);
+  size_t batch_num = yacl::math::DivCeil(total, batch_size);
+
   for (size_t i = 0; i < batch_num; ++i) {
-    size_t remain = std::min(kBatchAST, total - i * kBatchAST);
+    size_t remain = std::min(batch_size, total - i * batch_size);
     std::vector<std::vector<internal::ATy>> cur_vec_a_T_all;
     std::vector<std::vector<internal::ATy>> cur_vec_b_T_all;
     ASTGet_batch_basic_2k(remain, T, cur_vec_a_T_all, cur_vec_b_T_all);

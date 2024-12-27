@@ -1,5 +1,6 @@
 #include "mosac/cr/utils/shuffle.h"
 
+#include "mosac/cr/param.h"
 #include "yacl/base/dynamic_bitset.h"
 #include "yacl/crypto/base/aes/aes_intrinsics.h"
 #include "yacl/crypto/base/aes/aes_opt.h"
@@ -15,7 +16,6 @@ namespace ym = yacl::math;
 
 // fixed key
 namespace {
-constexpr size_t kBatchShuffle = 2048;
 // constexpr size_t kBatchAST = 2048;
 // constexpr size_t kStep = 16;
 const std::array<yc::AES_KEY, 12> kPrfKey = {
@@ -519,7 +519,7 @@ void BatchShuffleSend(std::shared_ptr<Connection>& conn,
   std::vector<std::vector<uint128_t>> check_vec_a;
   std::vector<std::vector<uint128_t>> check_vec_b;
 
-  uint32_t delay_round = ym::DivCeil(kBatchShuffle, required_ot);
+  uint32_t delay_round = ym::DivCeil(param::kBatchShuffle, required_ot);
   // SPDLOG_INFO("magic delay round {}", delay_round);
   uint64_t delay_message_size = delay_round * required_ot;
 
@@ -571,7 +571,7 @@ void BatchShuffleRecv(std::shared_ptr<Connection>& conn,
   std::vector<std::vector<uint128_t>> check_vec_a;
   std::vector<std::vector<uint128_t>> check_vec_b;
 
-  uint32_t delay_round = ym::DivCeil(kBatchShuffle, required_ot);
+  uint32_t delay_round = ym::DivCeil(param::kBatchShuffle, required_ot);
   // SPDLOG_INFO("magic delay round {}", delay_round);
   uint64_t delay_message_size = delay_round * required_ot;
 
@@ -1126,6 +1126,7 @@ void BatchASTSend(std::shared_ptr<Connection>& conn,
                   const std::vector<std::vector<size_t>>& perms,
                   std::vector<std::vector<internal::ATy>>& lhs,
                   std::vector<std::vector<internal::ATy>>& rhs) {
+  SPDLOG_INFO("Enter Batch AST Send");
   lhs.clear();
   rhs.clear();
 
@@ -1197,6 +1198,7 @@ void BatchASTRecv(std::shared_ptr<Connection> conn,
                   size_t per_size, absl::Span<const internal::ATy> r,
                   std::vector<std::vector<internal::ATy>>& lhs,
                   std::vector<std::vector<internal::ATy>>& rhs) {
+  SPDLOG_INFO("Enter Batch AST Recv");
   lhs.clear();
   rhs.clear();
 

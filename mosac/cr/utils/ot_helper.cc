@@ -1,5 +1,6 @@
 #include "mosac/cr/utils/ot_helper.h"
 
+#include "mosac/cr/param.h"
 #include "mosac/cr/utils/shuffle.h"
 #include "mosac/utils/vec_op.h"
 #include "yacl/crypto/primitives/ot/gywz_ote.h"
@@ -10,12 +11,6 @@ namespace mosac::ot {
 
 namespace yc = yacl::crypto;
 namespace ym = yacl::math;
-
-namespace {
-// https://eprint.iacr.org/2016/505.pdf
-// MASCOT
-constexpr size_t kExtFactor = 3;
-}  // namespace
 
 // ---------------------
 //  Basic Beaver Triple
@@ -137,7 +132,7 @@ void OtHelper::MulPPExtendSend(std::shared_ptr<Connection>& conn,
   // bits in Public Type
   const size_t PTy_bits = sizeof(internal::PTy) * 8;
   // beaver extend num = num * extend factor
-  const size_t ext_num = num * kExtFactor;
+  const size_t ext_num = num * kBeaverExtFactor;
   // ot num = num * extend factor * bits of Public Type
   const size_t ot_num = ext_num * PTy_bits;
   internal::op::Rand(absl::MakeSpan(b));
@@ -150,8 +145,8 @@ void OtHelper::MulPPExtendSend(std::shared_ptr<Connection>& conn,
   for (size_t i = 0; i < num; ++i) {
     // ot_block0 - ot_block1 + b
     // c = - block0
-    for (size_t j = 0; j < kExtFactor; ++j) {
-      const size_t offset = i * kExtFactor * PTy_bits + j * PTy_bits;
+    for (size_t j = 0; j < kBeaverExtFactor; ++j) {
+      const size_t offset = i * kBeaverExtFactor * PTy_bits + j * PTy_bits;
       auto bi_k = b[i];
       for (size_t k = 0; k < PTy_bits; ++k) {
         send_msgs[offset + k] = internal::PTy(ot_send_msgs[offset + k][0]) -
@@ -192,9 +187,9 @@ void OtHelper::MulPPExtendSend(std::shared_ptr<Connection>& conn,
   for (size_t i = 0; i < num; ++i) {
     c[i] = internal::PTy::Zero();
     C[i] = internal::PTy::Zero();
-    for (size_t j = 0; j < kExtFactor; ++j) {
-      c[i] = c[i] + cc[i * kExtFactor + j];
-      C[i] = C[i] + CC[i * kExtFactor + j];
+    for (size_t j = 0; j < kBeaverExtFactor; ++j) {
+      c[i] = c[i] + cc[i * kBeaverExtFactor + j];
+      C[i] = C[i] + CC[i * kBeaverExtFactor + j];
     }
   }
 }
@@ -209,7 +204,7 @@ void OtHelper::MulPPExtendRecv(std::shared_ptr<Connection>& conn,
   // bits in Public Type
   const size_t PTy_bits = sizeof(internal::PTy) * 8;
   // beaver extend num = num * extend factor
-  const size_t ext_num = num * kExtFactor;
+  const size_t ext_num = num * kBeaverExtFactor;
   // ot num = num * extend factor * bits of Public Type
   const size_t ot_num = ext_num * PTy_bits;
 
@@ -255,12 +250,12 @@ void OtHelper::MulPPExtendRecv(std::shared_ptr<Connection>& conn,
 
     C[i] = internal::PTy::Zero();
     A[i] = internal::PTy::Zero();
-    for (size_t j = 0; j < kExtFactor; ++j) {
-      c[i] = c[i] + cc[i * kExtFactor + j];
-      a[i] = a[i] + aa[i * kExtFactor + j];
+    for (size_t j = 0; j < kBeaverExtFactor; ++j) {
+      c[i] = c[i] + cc[i * kBeaverExtFactor + j];
+      a[i] = a[i] + aa[i * kBeaverExtFactor + j];
 
-      C[i] = C[i] + CC[i * kExtFactor + j];
-      A[i] = A[i] + AA[i * kExtFactor + j];
+      C[i] = C[i] + CC[i * kBeaverExtFactor + j];
+      A[i] = A[i] + AA[i * kBeaverExtFactor + j];
     }
   }
 }
@@ -323,7 +318,7 @@ void OtHelper::MulPPExtendSendWithChosenB(std::shared_ptr<Connection>& conn,
   // bits in Public Type
   const size_t PTy_bits = sizeof(internal::PTy) * 8;
   // beaver extend num = num * extend factor
-  const size_t ext_num = num * kExtFactor;
+  const size_t ext_num = num * kBeaverExtFactor;
   // ot num = num * extend factor * bits of Public Type
   const size_t ot_num = ext_num * PTy_bits;
 
@@ -335,8 +330,8 @@ void OtHelper::MulPPExtendSendWithChosenB(std::shared_ptr<Connection>& conn,
   for (size_t i = 0; i < num; ++i) {
     // ot_block0 - ot_block1 + b
     // c = - block0
-    for (size_t j = 0; j < kExtFactor; ++j) {
-      const size_t offset = i * kExtFactor * PTy_bits + j * PTy_bits;
+    for (size_t j = 0; j < kBeaverExtFactor; ++j) {
+      const size_t offset = i * kBeaverExtFactor * PTy_bits + j * PTy_bits;
       auto bi_k = b[i];
       for (size_t k = 0; k < PTy_bits; ++k) {
         send_msgs[offset + k] = internal::PTy(ot_send_msgs[offset + k][0]) -
@@ -377,9 +372,9 @@ void OtHelper::MulPPExtendSendWithChosenB(std::shared_ptr<Connection>& conn,
   for (size_t i = 0; i < num; ++i) {
     c[i] = internal::PTy::Zero();
     C[i] = internal::PTy::Zero();
-    for (size_t j = 0; j < kExtFactor; ++j) {
-      c[i] = c[i] + cc[i * kExtFactor + j];
-      C[i] = C[i] + CC[i * kExtFactor + j];
+    for (size_t j = 0; j < kBeaverExtFactor; ++j) {
+      c[i] = c[i] + cc[i * kBeaverExtFactor + j];
+      C[i] = C[i] + CC[i * kBeaverExtFactor + j];
     }
   }
 }
@@ -394,7 +389,7 @@ void OtHelper::MulPPExtendRecvWithChosenB(std::shared_ptr<Connection>& conn,
   // bits in Public Type
   const size_t PTy_bits = sizeof(internal::PTy) * 8;
   // beaver extend num = num * extend factor
-  const size_t ext_num = num * kExtFactor;
+  const size_t ext_num = num * kBeaverExtFactor;
   // ot num = num * extend factor * bits of Public Type
   const size_t ot_num = ext_num * PTy_bits;
 
@@ -440,12 +435,12 @@ void OtHelper::MulPPExtendRecvWithChosenB(std::shared_ptr<Connection>& conn,
 
     C[i] = internal::PTy::Zero();
     A[i] = internal::PTy::Zero();
-    for (size_t j = 0; j < kExtFactor; ++j) {
-      c[i] = c[i] + cc[i * kExtFactor + j];
-      a[i] = a[i] + aa[i * kExtFactor + j];
+    for (size_t j = 0; j < kBeaverExtFactor; ++j) {
+      c[i] = c[i] + cc[i * kBeaverExtFactor + j];
+      a[i] = a[i] + aa[i * kBeaverExtFactor + j];
 
-      C[i] = C[i] + CC[i * kExtFactor + j];
-      A[i] = A[i] + AA[i * kExtFactor + j];
+      C[i] = C[i] + CC[i * kBeaverExtFactor + j];
+      A[i] = A[i] + AA[i * kBeaverExtFactor + j];
     }
   }
 }

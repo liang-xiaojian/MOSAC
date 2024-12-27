@@ -1,10 +1,8 @@
 #include "mosac/cr/cr.h"
 
-namespace mosac {
+#include "mosac/cr/param.h"
 
-namespace {
-constexpr uint64_t kBatchShuffle = 2048;
-}
+namespace mosac {
 
 // register string
 const std::string Correlation::id = std::string("Correlation");
@@ -117,10 +115,16 @@ std::vector<ShuffleSTy> Correlation::BatchShuffleSet(size_t batch_num,
                                                      size_t per_size,
                                                      size_t repeat) {
   std::vector<ShuffleSTy> ret;
-  auto small_batch_num = yacl::math::DivCeil(batch_num, kBatchShuffle);
 
+  const auto ot_per_shuffle = yacl::math::Log2Ceil(per_size) * per_size;
+  const auto small_batch_size =
+      yacl::math::DivCeil(param::kBatchOtSize, ot_per_shuffle);
+
+  auto small_batch_num = yacl::math::DivCeil(batch_num, small_batch_size);
+
+  // FIXME: Try to move this to true_cr
   for (size_t _ = 0; _ < small_batch_num; ++_) {
-    auto remain = std::min(kBatchShuffle, batch_num - _ * kBatchShuffle);
+    auto remain = std::min(small_batch_size, batch_num - _ * small_batch_size);
     std::vector<std::vector<size_t>> perms;
     for (size_t i = 0; i < remain; ++i) {
       auto perm = GenPerm(per_size);
@@ -147,14 +151,20 @@ std::vector<ShuffleSTy> Correlation::BatchShuffleSet(size_t batch_num,
   // }
   return ret;
 }
+
 std::vector<ShuffleGTy> Correlation::BatchShuffleGet(size_t batch_num,
                                                      size_t per_size,
                                                      size_t repeat) {
   std::vector<ShuffleGTy> ret;
-  auto small_batch_num = yacl::math::DivCeil(batch_num, kBatchShuffle);
 
+  const auto ot_per_shuffle = yacl::math::Log2Ceil(per_size) * per_size;
+  const auto small_batch_size =
+      yacl::math::DivCeil(param::kBatchOtSize, ot_per_shuffle);
+  auto small_batch_num = yacl::math::DivCeil(batch_num, small_batch_size);
+
+  // FIXME: Try to move this to true_cr
   for (size_t _ = 0; _ < small_batch_num; ++_) {
-    auto remain = std::min(kBatchShuffle, batch_num - _ * kBatchShuffle);
+    auto remain = std::min(small_batch_size, batch_num - _ * small_batch_size);
 
     std::vector<std::vector<internal::PTy>> vec_a;
     std::vector<std::vector<internal::PTy>> vec_b;

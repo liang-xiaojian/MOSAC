@@ -6,6 +6,10 @@
 
 namespace mosac::ot {
 
+// https://eprint.iacr.org/2016/505.pdf
+// MASCOT
+constexpr size_t kBeaverExtFactor = 3;
+
 class OtHelper {
  public:
   OtHelper(const std::shared_ptr<OtAdapter>& ot_sender,
