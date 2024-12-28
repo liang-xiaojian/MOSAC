@@ -14,12 +14,12 @@ namespace yc = yacl::crypto;
 // using GTy = ym::MPInt;
 
 // Field 128 bits
-// using PTy = kFp128;
-// using op = op128;
+using PTy = kFp128;
+using op = op128;
 
 // Field 64 bits
-using PTy = kFp64;
-using op = op64;
+// using PTy = kFp64;
+// using op = op64;
 
 #pragma pack(8)
 // Distribute PTy with Mac (additive share)
