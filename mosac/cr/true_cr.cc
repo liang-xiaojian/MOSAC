@@ -50,7 +50,7 @@ void TrueCorrelation::BeaverTriple(absl::Span<internal::ATy> a,
 
   auto conn = ctx_->GetConnection();
 
-  const auto ot_per_mul = 8 * sizeof(internal::PTy) * ot::kBeaverExtFactor;
+  const auto ot_per_mul = 8 * sizeof(internal::PTy) * param::kBeaverExtFactor;
   const auto batch_size = yacl::math::DivCeil(param::kBatchOtSize, ot_per_mul);
   const auto batch_num = yacl::math::DivCeil(num, batch_size);
 
@@ -669,7 +669,7 @@ std::vector<internal::ATy> TrueCorrelation::Mul(
   auto a = std::vector<internal::ATy>(num, {0, 0});
   auto c = std::vector<internal::ATy>(num, {0, 0});
 
-  const auto ot_per_mul = 8 * sizeof(internal::PTy) * ot::kBeaverExtFactor;
+  const auto ot_per_mul = 8 * sizeof(internal::PTy) * param::kBeaverExtFactor;
   const auto small_batch_size =
       yacl::math::DivCeil(param::kBatchOtSize, ot_per_mul);
   const auto small_batch_num = yacl::math::DivCeil(num, small_batch_size);
