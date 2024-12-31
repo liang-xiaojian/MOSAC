@@ -59,6 +59,8 @@ bazel run -c opt //mosac/example:socket_example -- --rank=0/1 --num=shuffle_size
 bazel run -c opt //mosac/example:AST2k_offline_example -- --rank=0/1 --small_power=small_two_power --big_power=big_two_power --CR=0/1 # secure shuffle (offline bench benchmark)
 bazel run -c opt //mosac/example:NDSS_online_example -- --rank=0/1 --small_power=small_two_power --big_power=big_two_power --CR=0/1 --cache=0/1 # NDSS shuffle (online benchmark)
 bazel run -c opt //mosac/example:NDSS_offline_example -- --rank=0/1 --small_power=small_two_power --big_power=big_two_power --CR=0/1 # NDSS shuffle (offline benchmark)
+bazel run -c opt //mosac/example:NMul_offline_example -- --alone=0/1 --rank=0/1 --CR=0/1 --num=number_for_N # NMul Share benchmark
+bazel run -c opt //mosac/example:AShare_example -- --alone=0/1 --rank=0/1 --CR=0/1 --num=number_of_ashare # A Share benchmark
 ```
 
 command line flags

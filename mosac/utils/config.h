@@ -3,9 +3,12 @@
 #include "field.h"
 // #include "gmp.h"
 #include "mosac/utils/field.h"
+#include "mosac/utils/uint256.h"
 #include "yacl/base/int128.h"
 
 namespace mosac {
+
+using uint256_t = uint256;
 
 // Mersenne prime, M_p = 2^p - 1
 // M31 = 2^31 - 1

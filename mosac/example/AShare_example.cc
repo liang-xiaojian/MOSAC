@@ -30,76 +30,69 @@ llvm::cl::opt<uint32_t> cl_CR(
     llvm::cl::desc("0 for prg-based correlated randomness, 1 for real "
                    "correlated randomness"));
 
-llvm::cl::opt<uint32_t> cl_small("small_power", llvm::cl::init(3),
-                                 llvm::cl::desc("T=2^small_power"));
+llvm::cl::opt<uint32_t> cl_num("num", llvm::cl::init(4),
+                               llvm::cl::desc("Numbers for NMul"));
 
-llvm::cl::opt<uint32_t> cl_big("big_power", llvm::cl::init(4),
-                               llvm::cl::desc("num=2^big_power"));
-
-auto Shuffle2k(const std::shared_ptr<yacl::link::Context> &lctx, size_t T,
-               size_t num, bool CR_mode) {
+auto AShare(const std::shared_ptr<yacl::link::Context> &lctx, size_t num,
+            bool CR_mode) {
   auto rank = lctx->Rank();
 
-  SPDLOG_INFO("[P{}] T {} && num {}, working mode: {} ", rank, T, num,
+  SPDLOG_INFO("[P{}] && num {}, working mode: {} ", rank, num,
               (CR_mode ? std::string("Real Correlated Randomness")
                        : std::string("Fake Correlated Randomness")));
 
   auto context = std::make_shared<Context>(lctx);
   SetupContext(context, CR_mode /* fake CR model or real CR model */);
-
   auto prot = context->GetState<Protocol>();
   auto cr = context->GetState<Correlation>();
+  auto r = internal::op::Rand(num);
+  auto ret = std::vector<internal::ATy>(num);
 
-  auto shares = prot->RandA(num, true);
-  auto shuffle = prot->ShuffleA_2k(T, shares, true);
+  // offline
+  TIMER_N_COMM_START(AShare_offline);
+  {
+    if (rank) {
+      prot->SetA(r, true);
+      prot->GetA(num, true);
+    } else {
+      prot->GetA(num, true);
+      prot->SetA(r, true);
+    }
 
-  auto ShuffleGetVec = cr->GetShuffleGetShape();
-  auto ShuffleSetVec = cr->GetShuffleSetShape();
-
-  auto get_batch_size = ShuffleGetVec.size();
-  auto set_batch_size = ShuffleSetVec.size();
-
-  auto get_T = ShuffleGetVec[0] >> 8;
-  auto get_repeat = ShuffleGetVec[0] & 0xFF;
-
-  auto set_T = ShuffleSetVec[0] >> 8;
-  auto set_repeat = ShuffleSetVec[0] & 0xFF;
-
-  SPDLOG_INFO("[P{}] ShuffleGet batch size {} && T size {} && repeat {} ", rank,
-              get_batch_size, get_T, get_repeat);
-  SPDLOG_INFO("[P{}] ShuffleSet batch size {} && T size {} && repeat {} ", rank,
-              set_batch_size, set_T, set_repeat);
-
-  TIMER_N_COMM_START(NDSS_shuffle_offline);
-
-  std::vector<ShuffleSTy> vec_SS;
-  std::vector<ShuffleGTy> vec_SG;
-  if (rank == 0) {
-    vec_SG = cr->BatchShuffleGet(get_batch_size, get_T, get_repeat);
-    vec_SS = cr->BatchShuffleSet(set_batch_size, set_T, set_repeat);
-  } else {
-    vec_SS = cr->BatchShuffleSet(set_batch_size, set_T, set_repeat);
-    vec_SG = cr->BatchShuffleGet(get_batch_size, get_T, get_repeat);
+    cr->force_cache();
   }
-  TIMER_N_COMM_END_PRINT(NDSS_shuffle_offline);
+  TIMER_N_COMM_END_PRINT(AShare_offline);
 
-  return std::make_pair(vec_SS, vec_SG);
+  // online
+  TIMER_N_COMM_START(AShare_online);
+
+  if (rank) {
+    auto tmp1 = prot->SetA(r);
+    auto tmp2 = prot->GetA(num);
+    ret = prot->Add(tmp1, tmp2);
+  } else {
+    auto tmp1 = prot->GetA(num);
+    auto tmp2 = prot->SetA(r);
+    ret = prot->Add(tmp1, tmp2);
+  }
+  TIMER_N_COMM_END_PRINT(AShare_online);
+
+  return ret;
 }
 
 struct ArgPack {
-  uint32_t T;
   uint32_t num;
   uint32_t CR_mode;
 
   bool operator==(const ArgPack &other) const {
-    return (T == other.T) && (num == other.num) && (CR_mode == other.CR_mode);
+    return (num == other.num) && (CR_mode == other.CR_mode);
   }
   bool operator!=(const ArgPack &other) const { return !(*this == other); }
 };
 
-bool SyncTask(const std::shared_ptr<yacl::link::Context> &lctx, uint32_t T,
-              uint32_t num, uint32_t CR_mode) {
-  ArgPack tmp = {T, num, CR_mode};
+bool SyncTask(const std::shared_ptr<yacl::link::Context> &lctx, uint32_t num,
+              uint32_t CR_mode) {
+  ArgPack tmp = {num, CR_mode};
   auto bv = yacl::ByteContainerView(&tmp, sizeof(tmp));
 
   ArgPack remote;
@@ -129,7 +122,6 @@ std::shared_ptr<yacl::link::Context> MakeLink(const std::string &parties,
     lctx_desc.parties.emplace_back(id, hosts[rank]);
   }
   lctx_desc.throttle_window_size = 0;
-  lctx_desc.http_timeout_ms = 60 * 1000;  // 1 min
   auto lctx = yacl::link::FactoryBrpc().CreateContext(lctx_desc, rank);
   lctx->ConnectToMesh();
   return lctx;
@@ -142,23 +134,20 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
   bool alone = cl_alone.getValue();
-  uint32_t small_power = cl_small.getValue();
-  uint32_t big_power = cl_big.getValue();
+  uint32_t num = cl_num.getValue();
   bool CR_mode = cl_CR.getValue();
 
-  YACL_ENFORCE(0 < small_power && small_power <= big_power);
-  uint32_t T = 1 << small_power;
-  uint32_t num = 1 << big_power;
+  YACL_ENFORCE(2 <= num);
 
   // lambda
   auto run_party = [&](uint32_t rank) {
     auto lctx = MakeLink(cl_parties.getValue(), rank);
-    SyncTask(lctx, T, num, CR_mode);
+    SyncTask(lctx, num, CR_mode);
 
     SPDLOG_INFO("PROTOCOL START");
-    auto [vec_SS, vec_SG] = Shuffle2k(lctx, T, num, CR_mode);
+    auto ret = AShare(lctx, num, CR_mode);
     SPDLOG_INFO("PROTOCOL END");
-    return std::make_pair(vec_SS, vec_SG);
+    return ret;
   };
 
   if (alone == true) {

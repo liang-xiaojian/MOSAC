@@ -78,11 +78,10 @@ std::vector<ATy> MulAA(std::shared_ptr<Context>& ctx, absl::Span<const ATy> lhs,
   auto xyb = MulAP(ctx, lhs, v_p);
   auto xay = MulPA(ctx, u_p, rhs);
   auto xayb = MulPP(ctx, u_p, v_p);
-  auto oooo = P2A(ctx, absl::MakeSpan(xayb));
 
   c = AddAA(ctx, absl::MakeSpan(c), absl::MakeSpan(xyb));
   c = AddAA(ctx, absl::MakeSpan(c), absl::MakeSpan(xay));
-  c = SubAA(ctx, absl::MakeSpan(c), absl::MakeSpan(oooo));
+  c = SubAP(ctx, absl::MakeSpan(c), absl::MakeSpan(xayb));
   return c;
 }
 
@@ -109,10 +108,10 @@ std::vector<ATy> MulAA_cache([[maybe_unused]] std::shared_ptr<Context>& ctx,
   auto xyb = MulAP_cache(ctx, lhs, v_p);
   auto xay = MulPA_cache(ctx, u_p, rhs);
   auto xayb = MulPP_cache(ctx, u_p, v_p);
-  auto oooo = P2A_cache(ctx, absl::MakeSpan(xayb));
+
   c = AddAA_cache(ctx, absl::MakeSpan(c), absl::MakeSpan(xyb));
   c = AddAA_cache(ctx, absl::MakeSpan(c), absl::MakeSpan(xay));
-  c = SubAA_cache(ctx, absl::MakeSpan(c), absl::MakeSpan(oooo));
+  c = SubAP_cache(ctx, absl::MakeSpan(c), absl::MakeSpan(xayb));
   return c;
 }
 

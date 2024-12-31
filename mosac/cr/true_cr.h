@@ -24,7 +24,10 @@ class TrueCorrelation : public Correlation {
   std::shared_ptr<vole::VoleAdapter> vole_sender_;
   std::shared_ptr<vole::VoleAdapter> vole_receiver_;
 
+  // delay check
   std::vector<internal::PTy> delay_check_buff_;
+  std::vector<std::vector<internal::PTy>> val_delay_check_buff_;
+  std::vector<std::vector<internal::PTy>> mac_delay_check_buff_;
 
   TrueCorrelation(std::shared_ptr<Context> ctx) : Correlation(ctx) {}
 
@@ -36,17 +39,25 @@ class TrueCorrelation : public Correlation {
     auto conn = ctx_->GetConnection();
     if (ctx_->GetRank() == 0) {
       ot_sender_ = std::make_shared<ot::YaclSsOtAdapter>(conn->Spawn(), true);
+      // ot_sender_ =
+      //     std::make_shared<ot::YaclFerretOtAdapter>(conn->Spawn(), true);
       ot_sender_->OneTimeSetup();
 
       ot_receiver_ =
           std::make_shared<ot::YaclSsOtAdapter>(conn->Spawn(), false);
+      // ot_receiver_ =
+      //     std::make_shared<ot::YaclFerretOtAdapter>(conn->Spawn(), false);
       ot_receiver_->OneTimeSetup();
     } else {
       ot_receiver_ =
           std::make_shared<ot::YaclSsOtAdapter>(conn->Spawn(), false);
+      // ot_receiver_ =
+      //     std::make_shared<ot::YaclFerretOtAdapter>(conn->Spawn(), false);
       ot_receiver_->OneTimeSetup();
 
       ot_sender_ = std::make_shared<ot::YaclSsOtAdapter>(conn->Spawn(), true);
+      // ot_sender_ =
+      //     std::make_shared<ot::YaclFerretOtAdapter>(conn->Spawn(), true);
       ot_sender_->OneTimeSetup();
     }
 
@@ -194,8 +205,22 @@ class TrueCorrelation : public Correlation {
                     std::vector<std::vector<internal::ATy>>& out_vec_b);
 
   bool DelayCheck() override;
+
+  void AShareLineCombineDelayCheck();
+  void AShareLineCombineDelayCheck(absl::Span<const internal::ATy> in);
   // TODO:
   // internal::PTy SingleOpenAndCheck(const internal::ATy& in);
+ private:
+  uint64_t rand_set_num{0};
+  uint64_t rand_get_num{0};
+  uint64_t auth_set_num{0};
+  uint64_t auth_get_num{0};
+
+ public:
+  uint64_t GetRandSetNum() const { return rand_set_num; }
+  uint64_t GetRandGetNum() const { return rand_get_num; }
+  uint64_t GetAuthSetNum() const { return auth_set_num; }
+  uint64_t GetAuthGetNum() const { return auth_get_num; }
 };
 
 }  // namespace mosac

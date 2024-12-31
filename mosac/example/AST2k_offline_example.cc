@@ -51,12 +51,39 @@ auto AST2k(const std::shared_ptr<yacl::link::Context> &lctx, size_t T,
 
   TIMER_N_COMM_START(AST2k_2_side);
   if (rank == 0) {
+    TIMER_N_COMM_START(_AST2k);
     auto [perm, a, b] = cr->ASTSet_2k(T, num);
     auto [remote_a, remote_b] = cr->ASTGet_2k(T, num);
+    TIMER_N_COMM_END_PRINT(_AST2k);
+
+    TIMER_N_COMM_START(_NMUL);
+    cr->NMul(absl::MakeSpan(a));
+    cr->NMul(absl::MakeSpan(b));
+    cr->NMul(absl::MakeSpan(remote_a));
+    cr->NMul(absl::MakeSpan(remote_b));
+    TIMER_N_COMM_END_PRINT(_NMUL);
+
+    TIMER_N_COMM_START(_Beaver);
+    cr->BeaverTriple(num * 2 + 2);
+    TIMER_N_COMM_END_PRINT(_Beaver);
   } else {
+    TIMER_N_COMM_START(_AST2k);
     auto [remote_a, remote_b] = cr->ASTGet_2k(T, num);
     auto [perm, a, b] = cr->ASTSet_2k(T, num);
+    TIMER_N_COMM_END_PRINT(_AST2k);
+
+    TIMER_N_COMM_START(_NMUL);
+    cr->NMul(absl::MakeSpan(remote_a));
+    cr->NMul(absl::MakeSpan(remote_b));
+    cr->NMul(absl::MakeSpan(a));
+    cr->NMul(absl::MakeSpan(b));
+    TIMER_N_COMM_END_PRINT(_NMUL);
+
+    TIMER_N_COMM_START(_Beaver);
+    cr->BeaverTriple(num * 2 + 2);
+    TIMER_N_COMM_END_PRINT(_Beaver);
   }
+  cr->DelayCheck();
   TIMER_N_COMM_END_PRINT(AST2k_2_side);
 
   return true;
@@ -105,6 +132,7 @@ std::shared_ptr<yacl::link::Context> MakeLink(const std::string &parties,
     lctx_desc.parties.emplace_back(id, hosts[rank]);
   }
   lctx_desc.throttle_window_size = 0;
+  lctx_desc.http_timeout_ms = 120 * 1000;  // 1 min
   auto lctx = yacl::link::FactoryBrpc().CreateContext(lctx_desc, rank);
   lctx->ConnectToMesh();
   return lctx;

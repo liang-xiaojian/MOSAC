@@ -3,6 +3,14 @@ load("//bazel:mosac.bzl", "mosac_cc_library" , "mosac_cc_test")
 package(default_visibility = ["//visibility:public"])
 
 mosac_cc_library(
+    name = "cr_param",
+    srcs = [],
+    hdrs = [
+        "param.h",
+    ],
+)
+
+mosac_cc_library(
     name = "fake_cr",
     srcs = [
         "fake_cr.cc",
@@ -30,6 +38,7 @@ mosac_cc_library(
     ],
     deps = [
         ":cr",
+        ":cr_param",
         "//mosac/context",
         "//mosac/context:state",
         "//mosac/ss:ss_type",
@@ -50,6 +59,7 @@ mosac_cc_library(
         "cr.h",
     ],
     deps = [
+        ":cr_param",
         "//mosac/context",
         "//mosac/context:state",
         "//mosac/ss:ss_type",

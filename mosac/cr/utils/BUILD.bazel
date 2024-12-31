@@ -4,6 +4,31 @@ load("@yacl//bazel:yacl.bzl", "AES_COPT_FLAGS")
 package(default_visibility = ["//visibility:public"])
 
 mosac_cc_library(
+    name = "ferret_ot",
+    srcs = [
+        "ferret_ot.cc",
+    ],
+    hdrs = [
+        "ferret_ot.h",
+    ],
+    copts = AES_COPT_FLAGS,
+    deps = [
+        "@yacl//yacl/base:dynamic_bitset",
+        "@yacl//yacl/base:aligned_vector",
+        "@yacl//yacl/crypto/primitives/ot:base_ot",
+        "@yacl//yacl/crypto/primitives/ot:kos_ote",
+        "@yacl//yacl/crypto/primitives/ot:gywz_ote",
+        "@yacl//yacl/crypto/primitives/ot:softspoken_ote",
+        "@yacl//yacl/crypto/primitives/ot:ot_store",
+        "@yacl//yacl/crypto/primitives/code:linear_code",
+        "@yacl//yacl/crypto/utils:rand",
+        "@yacl//yacl/crypto/tools:common",
+        "@yacl//yacl/crypto/base/hash:hash_utils",
+        "@yacl//yacl/math:gadget",
+    ],
+)
+
+mosac_cc_library(
     name = "ot_adapter",
     srcs = [
         "ot_adapter.cc",
@@ -13,11 +38,12 @@ mosac_cc_library(
     ],
     deps = [
         "@yacl//yacl/base:dynamic_bitset",
+        "@yacl//yacl/base:buffer",
         "@yacl//yacl/crypto/primitives/ot:base_ot",
-        "@yacl//yacl/crypto/primitives/ot:kos_ote",
-        "@yacl//yacl/crypto/primitives/ot:softspoken_ote",
         "@yacl//yacl/crypto/primitives/ot:ot_store",
         "@yacl//yacl/crypto/utils:rand",
+        "@yacl//yacl/crypto/base/hash:hash_utils",
+        ":ferret_ot",
     ],
 )
 
@@ -45,12 +71,14 @@ mosac_cc_library(
         ":ot_adapter",
         "//mosac/context:state",
         "//mosac/ss:ss_type",
+        "//mosac/cr:cr_param",
         "@yacl//yacl/math:gadget",
         "@yacl//yacl/base:dynamic_bitset",
         "@yacl//yacl/crypto/primitives/ot:gywz_ote",
         "@yacl//yacl/crypto/utils:rand",
         "@yacl//yacl/crypto/base/aes:aes_opt",
         "@yacl//yacl/crypto/base/aes:aes_intrinsics",
+        "@yacl//yacl/crypto/base/hash:hash_utils",
     ],
 )
 
@@ -69,6 +97,7 @@ mosac_cc_library(
         "//mosac/ss:ss_type",
         "//mosac/utils:field",
         "//mosac/utils:vec_op",
+        "//mosac/cr:cr_param",
         "@yacl//yacl/crypto/primitives/ot:gywz_ote",
         "@yacl//yacl/math:gadget",
         "@yacl//yacl/crypto/tools:crhash",
@@ -195,6 +224,7 @@ mosac_cc_library(
         "//mosac/utils:field",
         "//mosac/utils:vec_op",
         "@yacl//yacl/crypto/primitives/ot:ot_store",
+        "@yacl//yacl/math:gadget",
     ],
 )
 

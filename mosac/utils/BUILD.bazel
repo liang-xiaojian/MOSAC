@@ -3,8 +3,22 @@ load("//bazel:mosac.bzl", "mosac_cc_library", "mosac_cc_test")
 package(default_visibility = ["//visibility:public"])
 
 mosac_cc_library(
+    name = "uint256",
+    hdrs = ["uint256.h"],
+    srcs = ["uint256.cc"],
+    deps = [
+        "@yacl//yacl/base:exception",
+        "@yacl//yacl/base:int128",
+        "@com_google_absl//absl/numeric:int128",
+    ],
+)
+
+mosac_cc_library(
     name = "config",
     hdrs = ["config.h"],
+    deps = [
+        ":uint256",
+    ],
 )
 
 mosac_cc_library(
@@ -15,7 +29,6 @@ mosac_cc_library(
         "@yacl//yacl/crypto/utils:rand",
         "@boost//:multiprecision",
     ],
-    defines = ["BOOST_ALL_NO_LIB"],
 )
 
 mosac_cc_library(

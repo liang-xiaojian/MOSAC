@@ -21,6 +21,7 @@ void inline SetupContext(std::shared_ptr<Context> ctx, bool CR_mode = true) {
   // Create Correlated Randomness Generator
   std::shared_ptr<Correlation> cr = nullptr;
   if (CR_mode) {
+    SPDLOG_INFO("True CR");
     auto true_cr = std::make_shared<TrueCorrelation>(ctx);
     cr = std::static_pointer_cast<Correlation>(true_cr);
   } else {

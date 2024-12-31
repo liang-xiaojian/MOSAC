@@ -142,8 +142,8 @@ TEST(CrTest, ShuffleWork) {
 
 TEST(CrTest, BatchShuffleWork) {
   auto context = TestParam::GetContext();
-  const size_t batch_num = 1 << 4;
-  const size_t per_size = 1 << 8;
+  const size_t batch_num = 1 << 8;
+  const size_t per_size = 1 << 4;
 
   auto rank0 = std::async([&] {
     auto cr = context[0]->GetState<Correlation>();

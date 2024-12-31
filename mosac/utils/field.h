@@ -1,14 +1,11 @@
 #pragma once
 
 // #include "gmp.h"
-#include "boost/multiprecision/cpp_int.hpp"
 #include "mosac/utils/config.h"
 #include "yacl/base/int128.h"
 #include "yacl/crypto/utils/rand.h"
 
 namespace mosac {
-
-using uint256_t = boost::multiprecision::uint256_t;
 
 namespace {
 
