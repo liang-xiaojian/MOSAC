@@ -36,8 +36,12 @@ llvm::cl::opt<uint32_t> cl_small("small_power", llvm::cl::init(3),
 llvm::cl::opt<uint32_t> cl_big("big_power", llvm::cl::init(4),
                                llvm::cl::desc("num=2^big_power"));
 
+llvm::cl::opt<uint32_t> cl_opt(
+    "opt", llvm::cl::init(0),
+    llvm::cl::desc("optimize (0 for sgrr-ote, 1 for gywz-ote)"));
+
 auto Shuffle2k(const std::shared_ptr<yacl::link::Context> &lctx, size_t T,
-               size_t num, bool CR_mode) {
+               size_t num, bool CR_mode, bool opt = false) {
   auto rank = lctx->Rank();
 
   SPDLOG_INFO("[P{}] T {} && num {}, working mode: {} ", rank, T, num,
@@ -75,11 +79,22 @@ auto Shuffle2k(const std::shared_ptr<yacl::link::Context> &lctx, size_t T,
   std::vector<ShuffleSTy> vec_SS;
   std::vector<ShuffleGTy> vec_SG;
   if (rank == 0) {
-    vec_SG = cr->BatchShuffleGet(get_batch_size, get_T, get_repeat);
-    vec_SS = cr->BatchShuffleSet(set_batch_size, set_T, set_repeat);
+    if (opt == false) {
+      vec_SG = cr->_BatchShuffleGet(get_batch_size, get_T, get_repeat);
+      vec_SS = cr->_BatchShuffleSet(set_batch_size, set_T, set_repeat);
+    } else {
+      vec_SG = cr->BatchShuffleGet(get_batch_size, get_T, get_repeat);
+      vec_SS = cr->BatchShuffleSet(set_batch_size, set_T, set_repeat);
+    }
+
   } else {
-    vec_SS = cr->BatchShuffleSet(set_batch_size, set_T, set_repeat);
-    vec_SG = cr->BatchShuffleGet(get_batch_size, get_T, get_repeat);
+    if (opt == false) {
+      vec_SS = cr->_BatchShuffleSet(set_batch_size, set_T, set_repeat);
+      vec_SG = cr->_BatchShuffleGet(get_batch_size, get_T, get_repeat);
+    } else {
+      vec_SS = cr->BatchShuffleSet(set_batch_size, set_T, set_repeat);
+      vec_SG = cr->BatchShuffleGet(get_batch_size, get_T, get_repeat);
+    }
   }
   TIMER_N_COMM_END_PRINT(NDSS_shuffle_offline);
 
@@ -90,16 +105,18 @@ struct ArgPack {
   uint32_t T;
   uint32_t num;
   uint32_t CR_mode;
+  uint32_t opt;
 
   bool operator==(const ArgPack &other) const {
-    return (T == other.T) && (num == other.num) && (CR_mode == other.CR_mode);
+    return (T == other.T) && (num == other.num) && (CR_mode == other.CR_mode) &&
+           (opt == other.opt);
   }
   bool operator!=(const ArgPack &other) const { return !(*this == other); }
 };
 
 bool SyncTask(const std::shared_ptr<yacl::link::Context> &lctx, uint32_t T,
-              uint32_t num, uint32_t CR_mode) {
-  ArgPack tmp = {T, num, CR_mode};
+              uint32_t num, uint32_t CR_mode, uint32_t opt) {
+  ArgPack tmp = {T, num, CR_mode, opt};
   auto bv = yacl::ByteContainerView(&tmp, sizeof(tmp));
 
   ArgPack remote;
@@ -129,7 +146,7 @@ std::shared_ptr<yacl::link::Context> MakeLink(const std::string &parties,
     lctx_desc.parties.emplace_back(id, hosts[rank]);
   }
   lctx_desc.throttle_window_size = 0;
-  lctx_desc.http_timeout_ms = 60 * 1000;  // 1 min
+  lctx_desc.http_timeout_ms = 300 * 1000;  // 5 min
   auto lctx = yacl::link::FactoryBrpc().CreateContext(lctx_desc, rank);
   lctx->ConnectToMesh();
   return lctx;
@@ -145,6 +162,7 @@ int main(int argc, char **argv) {
   uint32_t small_power = cl_small.getValue();
   uint32_t big_power = cl_big.getValue();
   bool CR_mode = cl_CR.getValue();
+  bool opt = cl_opt.getValue();
 
   YACL_ENFORCE(0 < small_power && small_power <= big_power);
   uint32_t T = 1 << small_power;
@@ -153,10 +171,10 @@ int main(int argc, char **argv) {
   // lambda
   auto run_party = [&](uint32_t rank) {
     auto lctx = MakeLink(cl_parties.getValue(), rank);
-    SyncTask(lctx, T, num, CR_mode);
+    SyncTask(lctx, T, num, CR_mode, opt);
 
     SPDLOG_INFO("PROTOCOL START");
-    auto [vec_SS, vec_SG] = Shuffle2k(lctx, T, num, CR_mode);
+    auto [vec_SS, vec_SG] = Shuffle2k(lctx, T, num, CR_mode, opt);
     SPDLOG_INFO("PROTOCOL END");
     return std::make_pair(vec_SS, vec_SG);
   };

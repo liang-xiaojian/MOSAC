@@ -184,6 +184,62 @@ std::vector<ShuffleGTy> Correlation::BatchShuffleGet(size_t batch_num,
   return ret;
 }
 
+std::vector<ShuffleSTy> Correlation::_BatchShuffleSet(size_t batch_num,
+                                                      size_t per_size,
+                                                      size_t repeat) {
+  std::vector<ShuffleSTy> ret;
+
+  const auto ot_per_shuffle = yacl::math::Log2Ceil(per_size) * per_size;
+  const auto small_batch_size =
+      yacl::math::DivCeil(param::kBatchOtSize >> 3, ot_per_shuffle);
+
+  auto small_batch_num = yacl::math::DivCeil(batch_num, small_batch_size);
+
+  // FIXME: Try to move this to true_cr
+  for (size_t _ = 0; _ < small_batch_num; ++_) {
+    auto remain = std::min(small_batch_size, batch_num - _ * small_batch_size);
+    std::vector<std::vector<size_t>> perms;
+    for (size_t i = 0; i < remain; ++i) {
+      auto perm = GenPerm(per_size);
+      perms.emplace_back(std::move(perm));
+    }
+    std::vector<std::vector<internal::PTy>> vec_delta;
+    _BatchShuffleSet(remain, per_size, repeat, perms, vec_delta);
+
+    for (size_t i = 0; i < remain; ++i) {
+      ret.emplace_back(std::move(vec_delta[i]), std::move(perms[i]));
+    }
+  }
+
+  return ret;
+}
+
+std::vector<ShuffleGTy> Correlation::_BatchShuffleGet(size_t batch_num,
+                                                      size_t per_size,
+                                                      size_t repeat) {
+  std::vector<ShuffleGTy> ret;
+
+  const auto ot_per_shuffle = yacl::math::Log2Ceil(per_size) * per_size;
+  const auto small_batch_size =
+      yacl::math::DivCeil(param::kBatchOtSize >> 3, ot_per_shuffle);
+  auto small_batch_num = yacl::math::DivCeil(batch_num, small_batch_size);
+
+  // FIXME: Try to move this to true_cr
+  for (size_t _ = 0; _ < small_batch_num; ++_) {
+    auto remain = std::min(small_batch_size, batch_num - _ * small_batch_size);
+
+    std::vector<std::vector<internal::PTy>> vec_a;
+    std::vector<std::vector<internal::PTy>> vec_b;
+    _BatchShuffleGet(remain, per_size, repeat, vec_a, vec_b);
+
+    for (size_t i = 0; i < remain; ++i) {
+      ret.emplace_back(std::move(vec_a[i]), std::move(vec_b[i]));
+    }
+  }
+
+  return ret;
+}
+
 ASTSTy Correlation::ASTSet_2k(size_t T, size_t num) {
   std::vector<internal::ATy> a(num);
   std::vector<internal::ATy> b(num);

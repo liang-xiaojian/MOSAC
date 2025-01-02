@@ -177,6 +177,43 @@ TEST(CrTest, BatchShuffleWork) {
   }
 }
 
+TEST(CrTest, SgrrBatchShuffleWork) {
+  auto context = TestParam::GetContext();
+  const size_t batch_num = 1 << 8;
+  const size_t per_size = 1 << 4;
+
+  auto rank0 = std::async([&] {
+    auto cr = context[0]->GetState<Correlation>();
+    auto vec_SS = cr->_BatchShuffleSet(batch_num, per_size);
+    return vec_SS;
+  });
+  auto rank1 = std::async([&] {
+    auto cr = context[1]->GetState<Correlation>();
+    auto vec_SG = cr->_BatchShuffleGet(batch_num, per_size);
+    return vec_SG;
+  });
+
+  auto vec_SS = rank0.get();
+  auto vec_SG = rank1.get();
+
+  for (size_t k = 0; k < batch_num; ++k) {
+    auto& delta = vec_SS[k].delta;
+    auto& perm = vec_SS[k].perm;
+
+    auto& a = vec_SG[k].a;
+    auto& b = vec_SG[k].b;
+
+    for (size_t i = 0; i < per_size; ++i) {
+      EXPECT_EQ(internal::PTy(0), a[perm[i]] + b[i] + delta[i]);
+    }
+
+    sort(perm.begin(), perm.end());
+    for (size_t i = 0; i < per_size; ++i) {
+      EXPECT_EQ(perm[i], i);
+    }
+  }
+}
+
 TEST(CrTest, NMulTest) {
   auto context = TestParam::GetContext();
   const size_t num = 1000;

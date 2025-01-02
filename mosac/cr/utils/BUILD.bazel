@@ -75,6 +75,7 @@ mosac_cc_library(
         "@yacl//yacl/math:gadget",
         "@yacl//yacl/base:dynamic_bitset",
         "@yacl//yacl/crypto/primitives/ot:gywz_ote",
+        "@yacl//yacl/crypto/primitives/ot:sgrr_ote",
         "@yacl//yacl/crypto/utils:rand",
         "@yacl//yacl/crypto/base/aes:aes_opt",
         "@yacl//yacl/crypto/base/aes:aes_intrinsics",

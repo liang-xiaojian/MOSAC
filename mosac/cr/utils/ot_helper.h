@@ -88,6 +88,24 @@ class OtHelper {
                         std::vector<std::vector<internal::PTy>>& vec_a,
                         std::vector<std::vector<internal::PTy>>& vec_b);
 
+  void SgrrShuffleSend(std::shared_ptr<Connection>& conn,
+                       absl::Span<const size_t> perm,
+                       absl::Span<internal::PTy> delta, size_t repeat = 1);
+
+  void SgrrShuffleRecv(std::shared_ptr<Connection>& conn,
+                       absl::Span<internal::PTy> a, absl::Span<internal::PTy> b,
+                       size_t repeat = 1);
+
+  void SgrrBatchShuffleSend(std::shared_ptr<Connection>& conn, size_t total_num,
+                            size_t per_size, size_t repeat,
+                            const std::vector<std::vector<size_t>>& perms,
+                            std::vector<std::vector<internal::PTy>>& vec_delta);
+
+  void SgrrBatchShuffleRecv(std::shared_ptr<Connection>& conn, size_t total_num,
+                            size_t per_size, size_t repeat,
+                            std::vector<std::vector<internal::PTy>>& vec_a,
+                            std::vector<std::vector<internal::PTy>>& vec_b);
+
   void ASTSend(std::shared_ptr<Connection>& conn, absl::Span<const size_t> perm,
                absl::Span<const internal::ATy> r, absl::Span<internal::ATy> a,
                absl::Span<internal::ATy> b);

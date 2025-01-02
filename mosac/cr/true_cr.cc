@@ -217,7 +217,8 @@ void TrueCorrelation::ShuffleSet(absl::Span<const size_t> perm,
   const size_t full_size = delta.size();
   YACL_ENFORCE(full_size == batch_size * repeat);
 
-  ot::OtHelper(ot_sender_, ot_receiver_).ShuffleSend(conn, perm, delta, repeat);
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .SgrrShuffleSend(conn, perm, delta, repeat);
 }
 
 void TrueCorrelation::ShuffleGet(absl::Span<internal::PTy> a,
@@ -229,7 +230,7 @@ void TrueCorrelation::ShuffleGet(absl::Span<internal::PTy> a,
   YACL_ENFORCE(full_size == b.size());
   YACL_ENFORCE(full_size == batch_size * repeat);
 
-  ot::OtHelper(ot_sender_, ot_receiver_).ShuffleRecv(conn, a, b, repeat);
+  ot::OtHelper(ot_sender_, ot_receiver_).SgrrShuffleRecv(conn, a, b, repeat);
 }
 
 void TrueCorrelation::BatchShuffleSet(
@@ -241,13 +242,6 @@ void TrueCorrelation::BatchShuffleSet(
 
   ot::OtHelper(ot_sender_, ot_receiver_)
       .BatchShuffleSend(conn, batch_num, per_size, repeat, perms, vec_delta);
-
-  // for (size_t i = 0; i < batch_num; ++i) {
-  //   auto& perm = perms[i];
-  //   std::vector<internal::PTy> tmp_delta(per_size * repeat);
-  //   ShuffleSet(absl::MakeConstSpan(perm), absl::MakeSpan(tmp_delta), repeat);
-  //   vec_delta.emplace_back(std::move(tmp_delta));
-  // }
 }
 
 void TrueCorrelation::BatchShuffleGet(
@@ -260,15 +254,30 @@ void TrueCorrelation::BatchShuffleGet(
 
   ot::OtHelper(ot_sender_, ot_receiver_)
       .BatchShuffleRecv(conn, batch_num, per_size, repeat, vec_a, vec_b);
+}
 
-  // for (size_t i = 0; i < batch_num; ++i) {
-  //   std::vector<internal::PTy> tmp_a(per_size * repeat);
-  //   std::vector<internal::PTy> tmp_b(per_size * repeat);
-  //   ShuffleGet(absl::MakeSpan(tmp_a), absl::MakeSpan(tmp_b), repeat);
+void TrueCorrelation::_BatchShuffleSet(
+    size_t batch_num, size_t per_size, size_t repeat,
+    const std::vector<std::vector<size_t>>& perms,
+    std::vector<std::vector<internal::PTy>>& vec_delta) {
+  auto conn = ctx_->GetConnection();
+  vec_delta.clear();
 
-  //   vec_a.emplace_back(std::move(tmp_a));
-  //   vec_b.emplace_back(std::move(tmp_b));
-  // }
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .SgrrBatchShuffleSend(conn, batch_num, per_size, repeat, perms,
+                            vec_delta);
+}
+
+void TrueCorrelation::_BatchShuffleGet(
+    size_t batch_num, size_t per_size, size_t repeat,
+    std::vector<std::vector<internal::PTy>>& vec_a,
+    std::vector<std::vector<internal::PTy>>& vec_b) {
+  auto conn = ctx_->GetConnection();
+  vec_a.clear();
+  vec_b.clear();
+
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .SgrrBatchShuffleRecv(conn, batch_num, per_size, repeat, vec_a, vec_b);
 }
 
 // AST
