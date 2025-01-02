@@ -655,6 +655,33 @@ void OtHelper::BatchShuffleRecv(
                             vec_a, vec_b);
 }
 
+void OtHelper::SgrrShuffleSend(std::shared_ptr<Connection>& conn,
+                               absl::Span<const size_t> perm,
+                               absl::Span<internal::PTy> delta, size_t repeat) {
+  shuffle::SgrrShuffleSend(conn, ot_receiver_, perm, delta, repeat);
+}
+
+void OtHelper::SgrrShuffleRecv(std::shared_ptr<Connection>& conn,
+                               absl::Span<internal::PTy> a,
+                               absl::Span<internal::PTy> b, size_t repeat) {
+  shuffle::SgrrShuffleRecv(conn, ot_sender_, a, b, repeat);
+}
+
+void OtHelper::SgrrBatchShuffleSend(
+    std::shared_ptr<Connection>& conn, size_t total_num, size_t per_size,
+    size_t repeat, const std::vector<std::vector<size_t>>& perms,
+    std::vector<std::vector<internal::PTy>>& vec_delta) {
+  shuffle::SgrrBatchShuffleSend(conn, ot_receiver_, total_num, per_size, repeat,
+                                perms, vec_delta);
+}
+
+void OtHelper::SgrrBatchShuffleRecv(
+    std::shared_ptr<Connection>& conn, size_t total_num, size_t per_size,
+    size_t repeat, std::vector<std::vector<internal::PTy>>& vec_a,
+    std::vector<std::vector<internal::PTy>>& vec_b) {
+  shuffle::SgrrBatchShuffleRecv(conn, ot_sender_, total_num, per_size, repeat,
+                                vec_a, vec_b);
+}
 // ---------------------
 //  AST
 // ---------------------

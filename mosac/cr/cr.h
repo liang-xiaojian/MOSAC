@@ -161,6 +161,14 @@ class Correlation : public State {
       size_t batch_num, size_t per_size, size_t repeat,
       std::vector<std::vector<internal::PTy>>& vec_a,
       std::vector<std::vector<internal::PTy>>& vec_b) = 0;
+  virtual void _BatchShuffleSet(
+      size_t batch_num, size_t per_size, size_t repeat,
+      const std::vector<std::vector<size_t>>& perms,
+      std::vector<std::vector<internal::PTy>>& vec_delta) = 0;
+  virtual void _BatchShuffleGet(
+      size_t batch_num, size_t per_size, size_t repeat,
+      std::vector<std::vector<internal::PTy>>& vec_a,
+      std::vector<std::vector<internal::PTy>>& vec_b) = 0;
   // solve the case for 2^k (offline benchmark currently)
   virtual std::vector<size_t> ASTSet_2k(size_t T, absl::Span<internal::ATy> a,
                                         absl::Span<internal::ATy> b) = 0;
@@ -185,6 +193,10 @@ class Correlation : public State {
                                           size_t repeat = 1);
   std::vector<ShuffleGTy> BatchShuffleGet(size_t batch_num, size_t per_size,
                                           size_t repeat = 1);
+  std::vector<ShuffleSTy> _BatchShuffleSet(size_t batch_num, size_t per_size,
+                                           size_t repeat = 1);
+  std::vector<ShuffleGTy> _BatchShuffleGet(size_t batch_num, size_t per_size,
+                                           size_t repeat = 1);
   // solve the case for 2^k (offline benchmark currently)
   ASTSTy ASTSet_2k(size_t T, size_t num);
   ASTGTy ASTGet_2k(size_t T, size_t num);
