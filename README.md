@@ -39,6 +39,11 @@ debug mode (only for developing)
 ```sh
 bazel build //... # compile all files
 bazel test //... # run all test
+
+# OR
+make release # compile all files
+make test    # run all test
+make test_all # run all examples and test
 ```
 
 performance mode
@@ -50,6 +55,9 @@ bazel test -c opt //... # run all test (with -O2)
 clean all
 ```sh
 bazel clean --expunge # clean all bazel-*
+
+# OR
+make clean
 ```
 
 examples
