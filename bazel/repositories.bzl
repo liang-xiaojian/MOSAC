@@ -73,6 +73,5 @@ def mosac_deps():
     _bazel_skylib()
     _rules_python()
     _rules_pkg()
-    _gmp()
     _boost()
 
