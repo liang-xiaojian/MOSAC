@@ -52,3 +52,5 @@ external
 
 #brpc
 rpc_data
+
+thirdparty/*
