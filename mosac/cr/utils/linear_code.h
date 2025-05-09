@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "absl/types/span.h"
+#include "mosac/cr/utils/code_interface.h"
 #include "mosac/ss/type.h"
 #include "yacl/base/exception.h"
 #include "yacl/base/int128.h"
@@ -25,19 +26,6 @@ namespace mosac::code {
 namespace yc = yacl::crypto;
 
 constexpr uint32_t kLcBatchSize = 1024;  // linear code batch size
-
-// Linear code interface in F2k
-class LinearCodeInterface {
- public:
-  LinearCodeInterface(const LinearCodeInterface &) = delete;
-  LinearCodeInterface &operator=(const LinearCodeInterface &) = delete;
-  LinearCodeInterface() = default;
-  virtual ~LinearCodeInterface() = default;
-
-  // Get the dimention / length
-  virtual uint32_t GetDimention() const = 0;
-  virtual uint32_t GetLength() const = 0;
-};
 
 template <size_t d = 10>
 class LocalLinearCode : LinearCodeInterface {

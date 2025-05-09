@@ -22,6 +22,7 @@ auto OSS(const std::shared_ptr<yacl::link::Context> &lctx, size_t num) {
     auto result = prot->A2P(shuffle, true);
 
     context->GetState<Correlation>()->force_cache();
+    context->GetState<Correlation>()->cache_print();
   }
 
   // scheme with online

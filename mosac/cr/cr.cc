@@ -1,5 +1,6 @@
 #include "mosac/cr/cr.h"
 
+#include "cr.h"
 #include "mosac/cr/param.h"
 
 namespace mosac {
@@ -267,6 +268,12 @@ NMulTy Correlation::NMul(size_t num) {
   return NMulTy(std::move(r), mul_inv);
 }
 
+void Correlation::cache_print(){
+    if( cache_ != nullptr ){
+      cache_->PriteStates(ctx_->GetRank());
+    }
+}
+
 // cache
 void Correlation::force_cache(size_t beaver_num, size_t rand_set_num,
                               size_t rand_get_num,
@@ -464,6 +471,82 @@ NMulTy CorrelationCache::NMul(size_t num) {
   NMulTy ret = std::move(NMul_cache[num].back());
   NMul_cache[num].pop_back();
   return ret;
+}
+
+void CorrelationCache::PriteStates(size_t rank){
+  auto beaver_num = beaver_cache.a.size();
+  auto beaver_size = beaver_num * sizeof(internal::ATy) * 3;
+  SPDLOG_INFO("[P{}] beaver num {} (beaver size {} ( {:.2f} MB ))", rank, beaver_num, beaver_size , beaver_size * 1.0 / 1024 / 1024);
+
+  auto random_set_num = random_set_cache.data.size();
+  auto random_set_size = random_set_num * sizeof(internal::ATy);
+  SPDLOG_INFO("[P{}] random set num {} (random set size {} ( {:.2f} MB ))", rank, random_set_num, random_set_size , random_set_size * 1.0 / 1024 / 1024);
+  
+  auto random_get_num = random_get_cache.data.size();
+  auto random_get_size = random_get_num * sizeof(internal::ATy);
+  SPDLOG_INFO("[P{}] random get num {} (random get size {} ( {:.2f} MB ))", rank, random_get_num, random_get_size , random_get_size * 1.0 / 1024 / 1024);
+
+  auto shuffle_set_num = 0;  
+  auto shuffle_set_size = 0;
+  for (const auto& shuffle_set : shuffle_set_cache){
+    auto cur_num = shuffle_set.second.size();
+    shuffle_set_num += cur_num;
+    for (auto const& shuffle : shuffle_set.second){
+      auto length = shuffle.delta.size();
+      shuffle_set_size += length * (sizeof(internal::PTy) + sizeof(size_t));
+    }
+  }
+  SPDLOG_INFO("[P{}] shuffle set num {} (shuffle set size {} ( {:.2f} MB ))", rank, shuffle_set_num, shuffle_set_size , shuffle_set_size * 1.0 / 1024 / 1024);
+  
+  auto shuffle_get_num = 0;  
+  auto shuffle_get_size = 0;
+  for (const auto& shuffle_get : shuffle_get_cache){
+    auto cur_num = shuffle_get.second.size();
+    shuffle_get_num += cur_num;
+    for (auto const& shuffle : shuffle_get.second){
+      auto length = shuffle.a.size();
+      shuffle_get_size += length * (sizeof(internal::PTy) * 2);
+    }
+  }
+  SPDLOG_INFO("[P{}] shuffle get num {} (shuffle get size {} ( {:.2f} MB ))", rank, shuffle_get_num, shuffle_get_size , shuffle_get_size * 1.0 / 1024 / 1024);
+
+  
+  auto ast_set_num = 0;  
+  auto ast_set_size = 0;
+  for (const auto& ast_set : AST_set_cache){
+    auto cur_num = ast_set.second.size();
+    ast_set_num += cur_num;
+    for (auto const& ast : ast_set.second){
+      auto length = ast.a.size();
+      ast_set_size += length * (sizeof(internal::ATy) * 2 + sizeof(size_t));
+    }
+  }
+  SPDLOG_INFO("[P{}] ast set num {} (ast set size {} ( {:.2f} MB ))", rank, ast_set_num, ast_set_size , ast_set_size * 1.0 / 1024 / 1024);
+  
+  auto ast_get_num = 0;  
+  auto ast_get_size = 0;
+  for (const auto& ast_get : AST_get_cache){
+    auto cur_num = ast_get.second.size();
+    ast_get_num += cur_num;
+    for (auto const& ast : ast_get.second){
+      auto length = ast.a.size();
+      ast_get_size += length * (sizeof(internal::ATy) * 2 );
+    }
+  }
+  SPDLOG_INFO("[P{}] ast get num {} (ast get size {} ( {:.2f} MB ))", rank, ast_get_num, ast_get_size , ast_get_size * 1.0 / 1024 / 1024);
+  
+ 
+  auto nmul_num = 0;  
+  auto nmul_size = 0;
+  for (const auto& nmuls : NMul_cache){
+    auto cur_num = nmuls.second.size();
+    nmul_num += cur_num;
+    for (auto const& nmul : nmuls.second){
+      auto length = nmul.r.size();
+      nmul_size += length * (sizeof(internal::ATy) * 2 );
+    }
+  }
+  SPDLOG_INFO("[P{}] nmul num {} (nmul size {} ( {:.2f} MB ))", rank, nmul_num, nmul_size , nmul_size * 1.0 / 1024 / 1024);
 }
 
 }  // namespace mosac

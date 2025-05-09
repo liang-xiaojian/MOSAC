@@ -2,6 +2,7 @@
 
 #include "mosac/cr/utils/ot_adapter.h"
 #include "mosac/cr/utils/ot_helper.h"
+#include "mosac/cr/utils/silent_vole.h"
 #include "mosac/cr/utils/vole.h"
 #include "mosac/ss/type.h"
 #include "yacl/base/dynamic_bitset.h"
@@ -89,6 +90,70 @@ class WolverineVoleAdapter : public VoleAdapter {
   uint64_t buff_used_num_{0};
   uint64_t buff_upper_bound_{0};
   VoleParam vole_param_;
+};
+
+class SilentVoleAdapter : public VoleAdapter {
+ public:
+  SilentVoleAdapter(const std::shared_ptr<Connection>& conn,
+                    std::shared_ptr<ot::OtAdapter> ot_ptr,
+                    internal::PTy delta) {
+    ot_ptr_ = ot_ptr;
+    conn_ = conn;
+    is_sender_ = ot_ptr_->IsSender();
+    YACL_ENFORCE(is_sender_ == true);  // Vole Sender has delta
+    delta_ = delta;
+    vole_sender_ =
+        std::make_shared<SilentVoleSender>(CodeType::ExAcc7, ot_ptr_, delta_);
+  }
+
+  SilentVoleAdapter(const std::shared_ptr<Connection>& conn,
+                    std::shared_ptr<ot::OtAdapter> ot_ptr) {
+    ot_ptr_ = ot_ptr;
+    conn_ = conn;
+    is_sender_ = ot_ptr_->IsSender();
+    YACL_ENFORCE(is_sender_ == false);  // Vole Receiver
+    vole_receiver_ =
+        std::make_shared<SilentVoleReceiver>(CodeType::ExAcc7, ot_ptr_);
+  }
+
+  void rsend(absl::Span<internal::PTy> c) override {
+    YACL_ENFORCE(is_sender_ == true);  // Vole Sender
+    if (is_setup_ == false) {
+      OneTimeSetup();
+    }
+    SPDLOG_INFO("rsend");
+    vole_sender_->Send(conn_, c);
+  }
+  void rrecv(absl::Span<internal::PTy> a,
+             absl::Span<internal::PTy> b) override {
+    YACL_ENFORCE(is_sender_ == false);  // Vole Receiver
+    if (is_setup_ == false) {
+      OneTimeSetup();
+    }
+    SPDLOG_INFO("rrecv");
+    vole_receiver_->Recv(conn_, a, b);
+  }
+
+  void OneTimeSetup() override {
+    if (is_sender_) {
+      vole_sender_->OneTimeSetup(conn_);
+    } else {
+      vole_receiver_->OneTimeSetup(conn_);
+    }
+    is_setup_ = true;
+  }
+
+  internal::PTy delta_{0};
+  internal::PTy GetDelta() const override { return delta_; }
+
+ private:
+  bool is_sender_{false};
+  bool is_setup_{false};
+
+  std::shared_ptr<Connection> conn_{nullptr};
+  std::shared_ptr<ot::OtAdapter> ot_ptr_{nullptr};
+  std::shared_ptr<SilentVoleSender> vole_sender_{nullptr};
+  std::shared_ptr<SilentVoleReceiver> vole_receiver_{nullptr};
 };
 
 }  // namespace mosac::vole

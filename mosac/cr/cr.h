@@ -201,6 +201,9 @@ class Correlation : public State {
   ASTSTy ASTSet_2k(size_t T, size_t num);
   ASTGTy ASTGet_2k(size_t T, size_t num);
 
+  // Print
+  void cache_print();
+
   // ------------ cache -------------
  private:
   size_t b_num_{0};
@@ -300,6 +303,8 @@ struct CorrelationCache {
   ASTSTy ASTSet(size_t num);
   ASTGTy ASTGet(size_t num);
   NMulTy NMul(size_t num);
+
+  void PriteStates(size_t rank = -1);
 };
 
 }  // namespace mosac
