@@ -37,6 +37,7 @@ uint64_t GetNoiseNum(CodeType code) {
 }
 
 struct VoleParam {
+  bool is_mal_{true};
   uint64_t vole_num_;   // vole num
   uint64_t code_size_;  // code size
 
@@ -128,6 +129,46 @@ void DualLpnEncode2(const VoleParam& param, absl::Span<internal::PTy> in0,
   }
 }
 
+// consistency check tools
+inline internal::PTy UniversalHash(internal::PTy seed,
+                                   absl::Span<const internal::PTy> in) {
+  internal::PTy result(0);
+  std::for_each(in.rbegin(), in.rend(),
+                [&result, &seed](const internal::PTy& val) {
+                  result = (result + val) * seed;
+                });
+  return result;
+}
+
+inline std::vector<internal::PTy> ExtractCeof(
+    internal::PTy seed, absl::Span<const size_t> indexes) {
+  auto max_index = indexes.back();
+  auto bits = yacl::math::Log2Ceil(max_index + 1);
+
+  std::array<internal::PTy, 64> buf;
+  buf[0] = seed;
+  for (size_t i = 1; i < 64 && i <= bits; ++i) {
+    buf[i] = buf[i - 1] * buf[i - 1];
+  }
+
+  std::vector<internal::PTy> ceof;
+  for (const auto& index : indexes) {
+    auto index_plus_one = index + 1;
+    size_t mask = 1;
+
+    internal::PTy tmp(1);
+    for (size_t i = 0; i < 64 && mask <= index_plus_one; ++i) {
+      if (mask & index_plus_one) {
+        tmp = tmp * buf[i];
+      }
+      mask <<= 1;
+    }
+    ceof.emplace_back(tmp);
+  }
+
+  return ceof;
+}
+
 }  // namespace
 
 void SilentVoleSender::OneTimeSetup(std::shared_ptr<Connection>& conn) {
@@ -165,6 +206,26 @@ void SilentVoleSender::Send(std::shared_ptr<Connection>& conn,
       absl::MakeSpan(buf.data<internal::PTy>(), mp_param.mp_vole_size_);
   MpVoleSend(conn, send_store, mp_param, absl::MakeSpan(pre_c_),
              absl::MakeSpan(mp_vole_output));
+
+  // ---- consistency check ----
+  if (param.is_mal_) {
+    auto seed = conn->SyncSeed();
+    auto uhash =
+        UniversalHash(seed, mp_vole_output.subspan(0, mp_param.mp_vole_size_));
+    auto buf = conn->Recv(conn->NextRank(), "MalVole");
+    YACL_ENFORCE(buf.size() == sizeof(internal::PTy));
+    internal::PTy diff;
+    memcpy(&diff, buf.data(), buf.size());
+
+    uhash = uhash - delta_ * diff + pre_c_.back();
+
+    auto hash =
+        yacl::crypto::Sm3(yacl::ByteContainerView(&uhash, sizeof(uhash)));
+    conn->SendAsync(conn->NextRank(), yacl::ByteContainerView(hash),
+                    "MalVoleHash");
+  }
+  // ---- consistency check ----
+
   // dual LPN
   // compressing mp_vole_output into c
   DualLpnEncode(param, mp_vole_output, c);
@@ -220,6 +281,28 @@ void SilentVoleReceiver::Recv(std::shared_ptr<Connection>& conn,
   }
   MpVoleRecv(conn, recv_store, mp_param, absl::MakeSpan(pre_b_),
              absl::MakeSpan(mp_vole_output));
+
+  // ---- consistency check ----
+  if (param.is_mal_) {
+    auto seed = conn->SyncSeed();
+    auto uhash =
+        UniversalHash(seed, mp_vole_output.subspan(0, mp_param.mp_vole_size_));
+    auto coef = ExtractCeof(seed, absl::MakeConstSpan(indexes));
+    auto diff =
+        internal::op::InPro(absl::MakeConstSpan(coef),
+                            absl::MakeSpan(pre_a_).subspan(0, coef.size()));
+    diff = diff + pre_a_.back();
+    uhash = uhash + pre_b_.back();
+    conn->Send(conn->NextRank(), yacl::ByteContainerView(&diff, sizeof(diff)),
+               "MalVole");
+    auto hash =
+        yacl::crypto::Sm3(yacl::ByteContainerView(&uhash, sizeof(uhash)));
+    auto remote_hash = conn->Recv(conn->NextRank(), "MalVoleHash");
+    YACL_ENFORCE(yacl::ByteContainerView(hash) ==
+                 yacl::ByteContainerView(remote_hash));
+  }
+  // ---- consistency check ----
+
   // dual LPN
   // compressing sparse_noise into a, mp_vole_output into b
   DualLpnEncode2(param, absl::MakeSpan(sparse_noise), absl::MakeSpan(a),

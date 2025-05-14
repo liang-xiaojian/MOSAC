@@ -121,7 +121,6 @@ class SilentVoleAdapter : public VoleAdapter {
     if (is_setup_ == false) {
       OneTimeSetup();
     }
-    SPDLOG_INFO("rsend");
     vole_sender_->Send(conn_, c);
   }
   void rrecv(absl::Span<internal::PTy> a,
@@ -130,7 +129,6 @@ class SilentVoleAdapter : public VoleAdapter {
     if (is_setup_ == false) {
       OneTimeSetup();
     }
-    SPDLOG_INFO("rrecv");
     vole_receiver_->Recv(conn_, a, b);
   }
 

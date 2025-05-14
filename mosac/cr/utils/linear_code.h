@@ -71,7 +71,7 @@ class LocalLinearCode : LinearCodeInterface {
     for (uint32_t i = 0; i < out.size(); i += kLcBatchSize) {
       const uint32_t limit =
           std::min(kLcBatchSize, static_cast<uint32_t>(out.size()) - i);
-      const uint32_t block_num = limit * d / 4;
+      const uint32_t block_num = (limit * d + 3) / 4;
 
       for (uint32_t j = 0; j < block_num; ++j) {
         _mm_store_si128(reinterpret_cast<__m128i *>(&tmp[j]),
@@ -128,7 +128,7 @@ class LocalLinearCode : LinearCodeInterface {
     for (uint32_t i = 0; i < out_size; i += kLcBatchSize) {
       const uint32_t limit =
           std::min(kLcBatchSize, static_cast<uint32_t>(out_size) - i);
-      const uint32_t block_num = limit * d / 4;
+      const uint32_t block_num = (limit * d + 3) / 4;
 
       for (uint32_t j = 0; j < block_num; ++j) {
         _mm_store_si128(reinterpret_cast<__m128i *>(&tmp[j]),
