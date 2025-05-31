@@ -64,6 +64,27 @@ AuthTy Correlation::RandomAuth(size_t num) {
   return AuthTy(std::move(ret));
 }
 
+PlainSTy Correlation::RandomVoleSet(size_t num) {
+  if (cache_ != nullptr && cache_->RandomVoleSetSize() >= num) {
+    return cache_->RandomVoleSet(num);
+  }
+  SPDLOG_DEBUG("RandomVoleSet Uncached");
+  std::vector<internal::PTy> a(num);
+  std::vector<internal::PTy> b(num);
+  RandomVoleSet(absl::MakeSpan(a), absl::MakeSpan(b));
+  return PlainSTy(std::move(a), std::move(b));
+}
+
+PlainGTy Correlation::RandomVoleGet(size_t num) {
+  if (cache_ != nullptr && cache_->RandomVoleGetSize() >= num) {
+    return cache_->RandomVoleGet(num);
+  }
+  SPDLOG_DEBUG("RandomVoleGet Uncached");
+  std::vector<internal::PTy> c(num);
+  RandomVoleGet(absl::MakeSpan(c));
+  return PlainGTy(std::move(c));
+}
+
 ShuffleSTy Correlation::ShuffleSet(size_t num, size_t repeat) {
   if (cache_ != nullptr && cache_->ShuffleSetCount(num, repeat)) {
     return cache_->ShuffleSet(num, repeat);
@@ -110,6 +131,38 @@ ASTGTy Correlation::ASTGet(size_t num) {
   ASTGet(absl::MakeSpan(a), absl::MakeSpan(b));
   YACL_ENFORCE(DelayCheck());
   return ASTGTy(std::move(a), std::move(b));
+}
+
+DASTSTy Correlation::DoubleASTSet(size_t num) {
+  if (cache_ != nullptr && cache_->DoubleASTSetCount(num)) {
+    return cache_->DoubleASTSet(num);
+  }
+  SPDLOG_DEBUG("Double AST Set Uncached");
+  std::vector<internal::ATy> a(num);
+  std::vector<internal::ATy> b(num);
+  std::vector<internal::ATy> aa(num);
+  std::vector<internal::ATy> bb(num);
+  std::vector<size_t> perm =
+      DoubleASTSet(absl::MakeSpan(a), absl::MakeSpan(b), absl::MakeSpan(aa),
+                   absl::MakeSpan(bb));
+  YACL_ENFORCE(DelayCheck());
+  return DASTSTy(std::move(perm), std::move(a), std::move(b), std::move(aa),
+                 std::move(bb));
+}
+
+DASTGTy Correlation::DoubleASTGet(size_t num) {
+  if (cache_ != nullptr && cache_->DoubleASTGetCount(num)) {
+    return cache_->DoubleASTGet(num);
+  }
+  SPDLOG_DEBUG("Double AST Get Uncached");
+  std::vector<internal::ATy> a(num);
+  std::vector<internal::ATy> b(num);
+  std::vector<internal::ATy> aa(num);
+  std::vector<internal::ATy> bb(num);
+  DoubleASTGet(absl::MakeSpan(a), absl::MakeSpan(b), absl::MakeSpan(aa),
+               absl::MakeSpan(bb));
+  YACL_ENFORCE(DelayCheck());
+  return DASTGTy(std::move(a), std::move(b), std::move(aa), std::move(bb));
 }
 
 std::vector<ShuffleSTy> Correlation::BatchShuffleSet(size_t batch_num,
@@ -268,19 +321,22 @@ NMulTy Correlation::NMul(size_t num) {
   return NMulTy(std::move(r), mul_inv);
 }
 
-void Correlation::cache_print(){
-    if( cache_ != nullptr ){
-      cache_->PriteStates(ctx_->GetRank());
-    }
+void Correlation::cache_print() {
+  if (cache_ != nullptr) {
+    cache_->PriteStates(ctx_->GetRank());
+  }
 }
 
 // cache
 void Correlation::force_cache(size_t beaver_num, size_t rand_set_num,
-                              size_t rand_get_num,
+                              size_t rand_get_num, size_t vole_set_num,
+                              size_t vole_get_num,
                               const std::vector<uint64_t>& shuffle_set_shape,
                               const std::vector<uint64_t>& shuffle_get_shape,
                               const std::vector<uint64_t>& ast_set_shape,
                               const std::vector<uint64_t>& ast_get_shape,
+                              const std::vector<uint64_t>& double_ast_set_shape,
+                              const std::vector<uint64_t>& double_ast_get_shape,
                               const std::vector<uint64_t>& n_mul_shape) {
   cache_ = std::make_unique<CorrelationCache>();
   // beaver
@@ -303,6 +359,21 @@ void Correlation::force_cache(size_t beaver_num, size_t rand_set_num,
     } else {
       RandomGet(absl::MakeSpan(get_data));
       RandomSet(absl::MakeSpan(set_data));
+    }
+  }
+  // random vole
+  {
+    cache_->vole_set_cache = PlainSTy(vole_set_num);
+    cache_->vole_get_cache = PlainGTy(vole_get_num);
+    auto& a = cache_->vole_set_cache.a;
+    auto& b = cache_->vole_set_cache.b;
+    auto& c = cache_->vole_get_cache.c;
+    if (ctx_->GetRank() == 0) {
+      RandomVoleSet(absl::MakeSpan(a), absl::MakeSpan(b));
+      RandomVoleGet(absl::MakeSpan(c));
+    } else {
+      RandomVoleGet(absl::MakeSpan(c));
+      RandomVoleSet(absl::MakeSpan(a), absl::MakeSpan(b));
     }
   }
   // shuffle
@@ -381,6 +452,46 @@ void Correlation::force_cache(size_t beaver_num, size_t rand_set_num,
       }
     }
   }
+  // Double AST
+  {
+    auto& double_ast_set_map = cache_->double_AST_set_cache;
+    auto& double_ast_get_map = cache_->double_AST_get_cache;
+    if (ctx_->GetRank() == 0) {
+      // set
+      for (const auto num : double_ast_set_shape) {
+        DASTSTy tmp(num);
+        tmp.perm = DoubleASTSet(absl::MakeSpan(tmp.a), absl::MakeSpan(tmp.b),
+                                absl::MakeSpan(tmp.aa), absl::MakeSpan(tmp.bb));
+        auto& vec = double_ast_set_map[num];
+        vec.emplace_back(tmp);
+      }
+      // get
+      for (const auto num : double_ast_get_shape) {
+        DASTGTy tmp(num);
+        DoubleASTGet(absl::MakeSpan(tmp.a), absl::MakeSpan(tmp.b),
+                     absl::MakeSpan(tmp.aa), absl::MakeSpan(tmp.bb));
+        auto& vec = double_ast_get_map[num];
+        vec.emplace_back(tmp);
+      }
+    } else {
+      // get
+      for (const auto num : double_ast_get_shape) {
+        DASTGTy tmp(num);
+        DoubleASTGet(absl::MakeSpan(tmp.a), absl::MakeSpan(tmp.b),
+                     absl::MakeSpan(tmp.aa), absl::MakeSpan(tmp.bb));
+        auto& vec = double_ast_get_map[num];
+        vec.emplace_back(tmp);
+      }
+      // set
+      for (const auto num : double_ast_set_shape) {
+        DASTSTy tmp(num);
+        tmp.perm = DoubleASTSet(absl::MakeSpan(tmp.a), absl::MakeSpan(tmp.b),
+                                absl::MakeSpan(tmp.aa), absl::MakeSpan(tmp.bb));
+        auto& vec = double_ast_set_map[num];
+        vec.emplace_back(tmp);
+      }
+    }
+  }
   // N Mul
   {
     auto& nmul_map = cache_->NMul_cache;
@@ -436,6 +547,33 @@ AuthTy CorrelationCache::RandomGet(size_t num) {
   return AuthTy(std::move(data));
 }
 
+PlainSTy CorrelationCache::RandomVoleSet(size_t num) {
+  const size_t remain = RandomVoleSetSize();
+  YACL_ENFORCE(num <= remain);
+  // copy
+  std::vector<internal::PTy> a(vole_set_cache.a.end() - num,
+                               vole_set_cache.a.end());
+  std::vector<internal::PTy> b(vole_set_cache.b.end() - num,
+                               vole_set_cache.b.end());
+  // resize
+  vole_set_cache.a.resize(remain - num);
+  vole_set_cache.b.resize(remain - num);
+
+  return PlainSTy(std::move(a), std::move(b));
+}
+
+PlainGTy CorrelationCache::RandomVoleGet(size_t num) {
+  const size_t remain = RandomVoleGetSize();
+  YACL_ENFORCE(num <= remain);
+  // copy
+  std::vector<internal::PTy> c(vole_get_cache.c.end() - num,
+                               vole_get_cache.c.end());
+  // resize
+  vole_get_cache.c.resize(remain - num);
+
+  return PlainGTy(std::move(c));
+}
+
 ShuffleSTy CorrelationCache::ShuffleSet(size_t num, size_t repeat) {
   YACL_ENFORCE(ShuffleSetCount(num, repeat) > 0);
   const uint64_t index = ((num << 8) | repeat);
@@ -466,6 +604,20 @@ ASTGTy CorrelationCache::ASTGet(size_t num) {
   return ret;
 }
 
+DASTSTy CorrelationCache::DoubleASTSet(size_t num) {
+  YACL_ENFORCE(num > 0);
+  DASTSTy ret = std::move(double_AST_set_cache[num].back());
+  double_AST_set_cache[num].pop_back();
+  return ret;
+}
+
+DASTGTy CorrelationCache::DoubleASTGet(size_t num) {
+  YACL_ENFORCE(num > 0);
+  DASTGTy ret = std::move(double_AST_get_cache[num].back());
+  double_AST_get_cache[num].pop_back();
+  return ret;
+}
+
 NMulTy CorrelationCache::NMul(size_t num) {
   YACL_ENFORCE(num > 0);
   NMulTy ret = std::move(NMul_cache[num].back());
@@ -473,80 +625,133 @@ NMulTy CorrelationCache::NMul(size_t num) {
   return ret;
 }
 
-void CorrelationCache::PriteStates(size_t rank){
+void CorrelationCache::PriteStates(size_t rank) {
   auto beaver_num = beaver_cache.a.size();
   auto beaver_size = beaver_num * sizeof(internal::ATy) * 3;
-  SPDLOG_INFO("[P{}] beaver num {} (beaver size {} ( {:.2f} MB ))", rank, beaver_num, beaver_size , beaver_size * 1.0 / 1024 / 1024);
+  SPDLOG_INFO("[P{}] beaver num {} (beaver size {} ( {:.2f} MB ))", rank,
+              beaver_num, beaver_size, beaver_size * 1.0 / 1024 / 1024);
 
   auto random_set_num = random_set_cache.data.size();
   auto random_set_size = random_set_num * sizeof(internal::ATy);
-  SPDLOG_INFO("[P{}] random set num {} (random set size {} ( {:.2f} MB ))", rank, random_set_num, random_set_size , random_set_size * 1.0 / 1024 / 1024);
-  
+  SPDLOG_INFO("[P{}] random set num {} (random set size {} ( {:.2f} MB ))",
+              rank, random_set_num, random_set_size,
+              random_set_size * 1.0 / 1024 / 1024);
+
   auto random_get_num = random_get_cache.data.size();
   auto random_get_size = random_get_num * sizeof(internal::ATy);
-  SPDLOG_INFO("[P{}] random get num {} (random get size {} ( {:.2f} MB ))", rank, random_get_num, random_get_size , random_get_size * 1.0 / 1024 / 1024);
+  SPDLOG_INFO("[P{}] random get num {} (random get size {} ( {:.2f} MB ))",
+              rank, random_get_num, random_get_size,
+              random_get_size * 1.0 / 1024 / 1024);
 
-  auto shuffle_set_num = 0;  
+  auto vole_set_num = vole_set_cache.a.size();
+  auto vole_set_size = 2 * vole_set_num * sizeof(internal::PTy);
+  SPDLOG_INFO(
+      "[P{}] random vole set num {} (random vole set size {} ( {:.2f} MB ))",
+      rank, vole_set_num, vole_set_size, vole_set_size * 1.0 / 1024 / 1024);
+
+  auto vole_get_num = vole_get_cache.c.size();
+  auto vole_get_size = vole_get_num * sizeof(internal::PTy);
+  SPDLOG_INFO(
+      "[P{}] random vole get num {} (random vole get size {} ( {:.2f} MB ))",
+      rank, vole_get_num, vole_get_size, vole_get_size * 1.0 / 1024 / 1024);
+
+  auto shuffle_set_num = 0;
   auto shuffle_set_size = 0;
-  for (const auto& shuffle_set : shuffle_set_cache){
+  for (const auto& shuffle_set : shuffle_set_cache) {
     auto cur_num = shuffle_set.second.size();
     shuffle_set_num += cur_num;
-    for (auto const& shuffle : shuffle_set.second){
+    for (auto const& shuffle : shuffle_set.second) {
       auto length = shuffle.delta.size();
       shuffle_set_size += length * (sizeof(internal::PTy) + sizeof(size_t));
     }
   }
-  SPDLOG_INFO("[P{}] shuffle set num {} (shuffle set size {} ( {:.2f} MB ))", rank, shuffle_set_num, shuffle_set_size , shuffle_set_size * 1.0 / 1024 / 1024);
-  
-  auto shuffle_get_num = 0;  
+  SPDLOG_INFO("[P{}] shuffle set num {} (shuffle set size {} ( {:.2f} MB ))",
+              rank, shuffle_set_num, shuffle_set_size,
+              shuffle_set_size * 1.0 / 1024 / 1024);
+
+  auto shuffle_get_num = 0;
   auto shuffle_get_size = 0;
-  for (const auto& shuffle_get : shuffle_get_cache){
+  for (const auto& shuffle_get : shuffle_get_cache) {
     auto cur_num = shuffle_get.second.size();
     shuffle_get_num += cur_num;
-    for (auto const& shuffle : shuffle_get.second){
+    for (auto const& shuffle : shuffle_get.second) {
       auto length = shuffle.a.size();
       shuffle_get_size += length * (sizeof(internal::PTy) * 2);
     }
   }
-  SPDLOG_INFO("[P{}] shuffle get num {} (shuffle get size {} ( {:.2f} MB ))", rank, shuffle_get_num, shuffle_get_size , shuffle_get_size * 1.0 / 1024 / 1024);
+  SPDLOG_INFO("[P{}] shuffle get num {} (shuffle get size {} ( {:.2f} MB ))",
+              rank, shuffle_get_num, shuffle_get_size,
+              shuffle_get_size * 1.0 / 1024 / 1024);
 
-  
-  auto ast_set_num = 0;  
+  auto ast_set_num = 0;
   auto ast_set_size = 0;
-  for (const auto& ast_set : AST_set_cache){
+  for (const auto& ast_set : AST_set_cache) {
     auto cur_num = ast_set.second.size();
     ast_set_num += cur_num;
-    for (auto const& ast : ast_set.second){
+    for (auto const& ast : ast_set.second) {
       auto length = ast.a.size();
       ast_set_size += length * (sizeof(internal::ATy) * 2 + sizeof(size_t));
     }
   }
-  SPDLOG_INFO("[P{}] ast set num {} (ast set size {} ( {:.2f} MB ))", rank, ast_set_num, ast_set_size , ast_set_size * 1.0 / 1024 / 1024);
-  
-  auto ast_get_num = 0;  
+  SPDLOG_INFO("[P{}] ast set num {} (ast set size {} ( {:.2f} MB ))", rank,
+              ast_set_num, ast_set_size, ast_set_size * 1.0 / 1024 / 1024);
+
+  auto ast_get_num = 0;
   auto ast_get_size = 0;
-  for (const auto& ast_get : AST_get_cache){
+  for (const auto& ast_get : AST_get_cache) {
     auto cur_num = ast_get.second.size();
     ast_get_num += cur_num;
-    for (auto const& ast : ast_get.second){
+    for (auto const& ast : ast_get.second) {
       auto length = ast.a.size();
-      ast_get_size += length * (sizeof(internal::ATy) * 2 );
+      ast_get_size += length * (sizeof(internal::ATy) * 2);
     }
   }
-  SPDLOG_INFO("[P{}] ast get num {} (ast get size {} ( {:.2f} MB ))", rank, ast_get_num, ast_get_size , ast_get_size * 1.0 / 1024 / 1024);
-  
- 
-  auto nmul_num = 0;  
+  SPDLOG_INFO("[P{}] ast get num {} (ast get size {} ( {:.2f} MB ))", rank,
+              ast_get_num, ast_get_size, ast_get_size * 1.0 / 1024 / 1024);
+
+  auto double_ast_set_num = 0;
+  auto double_ast_set_size = 0;
+  for (const auto& double_ast_set : double_AST_set_cache) {
+    auto cur_num = double_ast_set.second.size();
+    double_ast_set_num += cur_num;
+    for (auto const& double_ast : double_ast_set.second) {
+      auto length = double_ast.a.size();
+      double_ast_set_size +=
+          length * (sizeof(internal::ATy) * 4 + sizeof(size_t));
+    }
+  }
+  SPDLOG_INFO(
+      "[P{}] double ast set num {} (double ast set size {} ( {:.2f} MB ))",
+      rank, double_ast_set_num, double_ast_set_size,
+      double_ast_set_size * 1.0 / 1024 / 1024);
+
+  auto double_ast_get_num = 0;
+  auto double_ast_get_size = 0;
+  for (const auto& double_ast_get : double_AST_get_cache) {
+    auto cur_num = double_ast_get.second.size();
+    double_ast_get_num += cur_num;
+    for (auto const& double_ast : double_ast_get.second) {
+      auto length = double_ast.a.size();
+      double_ast_get_size += length * (sizeof(internal::ATy) * 4);
+    }
+  }
+  SPDLOG_INFO(
+      "[P{}] double ast get num {} (double ast get size {} ( {:.2f} MB ))",
+      rank, double_ast_get_num, double_ast_get_size,
+      double_ast_get_size * 1.0 / 1024 / 1024);
+
+  auto nmul_num = 0;
   auto nmul_size = 0;
-  for (const auto& nmuls : NMul_cache){
+  for (const auto& nmuls : NMul_cache) {
     auto cur_num = nmuls.second.size();
     nmul_num += cur_num;
-    for (auto const& nmul : nmuls.second){
+    for (auto const& nmul : nmuls.second) {
       auto length = nmul.r.size();
-      nmul_size += length * (sizeof(internal::ATy) * 2 );
+      nmul_size += length * (sizeof(internal::ATy) * 2);
     }
   }
-  SPDLOG_INFO("[P{}] nmul num {} (nmul size {} ( {:.2f} MB ))", rank, nmul_num, nmul_size , nmul_size * 1.0 / 1024 / 1024);
+  SPDLOG_INFO("[P{}] nmul num {} (nmul size {} ( {:.2f} MB ))", rank, nmul_num,
+              nmul_size, nmul_size * 1.0 / 1024 / 1024);
 }
 
 }  // namespace mosac

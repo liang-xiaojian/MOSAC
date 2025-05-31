@@ -76,4 +76,24 @@ void BatchASTRecv(std::shared_ptr<Connection> conn,
                   std::vector<std::vector<internal::ATy>>& lhs,
                   std::vector<std::vector<internal::ATy>>& rhs);
 
+// ------ gywz ote baesd Double AST ----------
+void DoubleASTSend(std::shared_ptr<Connection>& conn,
+                   std::shared_ptr<ot::OtAdapter>& ot_ptr,
+                   absl::Span<const size_t> perm,
+                   absl::Span<const internal::ATy> r,
+                   absl::Span<internal::ATy> lhs, absl::Span<internal::ATy> rhs,
+                   /* double AST */
+                   absl::Span<const internal::ATy> rr,
+                   absl::Span<internal::ATy> llhs,
+                   absl::Span<internal::ATy> rrhs);
+
+void DoubleASTRecv(std::shared_ptr<Connection>& conn,
+                   std::shared_ptr<ot::OtAdapter>& ot_ptr,
+                   absl::Span<const internal::ATy> r,
+                   absl::Span<internal::ATy> lhs, absl::Span<internal::ATy> rhs,
+                   /* double AST */
+                   absl::Span<const internal::ATy> rr,
+                   absl::Span<internal::ATy> llhs,
+                   absl::Span<internal::ATy> rrhs);
+
 }  // namespace mosac::shuffle

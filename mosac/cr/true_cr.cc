@@ -277,6 +277,20 @@ void TrueCorrelation::RandomAuth(absl::Span<internal::ATy> out) {
       absl::MakeSpan(reinterpret_cast<internal::PTy*>(out.data()), 2 * num));
 }
 
+void TrueCorrelation::RandomVoleSet(absl::Span<internal::PTy> a,
+                                    absl::Span<internal::PTy> b) {
+  const size_t num = a.size();
+  YACL_ENFORCE(num == b.size());
+  YACL_ENFORCE(setup_extra_vole_ == true);
+
+  extra_vole_receiver_->rrecv(absl::MakeSpan(a), absl::MakeSpan(b));
+}
+
+void TrueCorrelation::RandomVoleGet(absl::Span<internal::PTy> c) {
+  YACL_ENFORCE(setup_extra_vole_ == true);
+  extra_vole_sender_->rsend(absl::MakeSpan(c));
+}
+
 void TrueCorrelation::ShuffleSet(absl::Span<const size_t> perm,
                                  absl::Span<internal::PTy> delta,
                                  size_t repeat) {
@@ -417,6 +431,133 @@ std::vector<size_t> TrueCorrelation::ASTSet(absl::Span<internal::ATy> a,
 
 void TrueCorrelation::ASTGet(absl::Span<internal::ATy> a,
                              absl::Span<internal::ATy> b) {
+  const size_t num = a.size();
+  YACL_ENFORCE(num == b.size());
+  auto conn = ctx_->GetConnection();
+
+  const size_t B = 10;
+  std::vector<internal::ATy> rand(num);
+  RandomAuth(absl::MakeSpan(rand));
+  ot::OtHelper(ot_sender_, ot_receiver_).ASTRecv(conn, rand, a, b);
+
+  // std::vector<internal::ATy> zeros(B);
+  // std::vector<internal::ATy> xs(B);
+  // RandomAuth(absl::MakeSpan(xs));
+
+  for (size_t i = 0; i < B; ++i) {
+    std::vector<internal::ATy> _rand(num);
+    std::vector<internal::ATy> _a(num);
+    std::vector<internal::ATy> _b(num);
+
+    RandomAuth(absl::MakeSpan(_rand));
+    ot::OtHelper(ot_sender_, ot_receiver_)
+        .ASTRecv(conn, _rand, absl::MakeSpan(_a), absl::MakeSpan(_b));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()),
+                       b.size() * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
+                       _a.size() * 2));
+    [[maybe_unused]] auto p = OpenAndDelayCheck(absl::MakeConstSpan(b));
+
+    std::vector<internal::ATy> shuffle_p_A(num);
+    AuthGet(absl::MakeSpan(shuffle_p_A));
+
+    internal::op::AddInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()),
+                       _b.size() * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_A.data()),
+                       shuffle_p_A.size() * 2));
+
+    // auto _b_x = _Func(absl::MakeConstSpan(_b), xs[i]);
+    // auto a_x = _Func(absl::MakeConstSpan(a), xs[i]);
+    // zeros[i] = {_b_x.val - a_x.val, _b_x.mac - a_x.mac};
+
+    AShareLineCombineDelayCheck(absl::MakeConstSpan(_b));
+    AShareLineCombineDelayCheck(absl::MakeConstSpan(a));
+
+    std::copy(_b.begin(), _b.end(), b.begin());
+  }
+
+  // auto o = OpenAndDelayCheck(absl::MakeConstSpan(zeros));
+  // for (size_t i = 0; i < B; ++i) {
+  //   YACL_ENFORCE(o[i] == internal::PTy(0));
+  // }
+}
+
+// AST [Warning DNF]
+std::vector<size_t> TrueCorrelation::DoubleASTSet(
+    absl::Span<internal::ATy> a, absl::Span<internal::ATy> b,
+    [[maybe_unused]] absl::Span<internal::ATy> aa,
+    [[maybe_unused]] absl::Span<internal::ATy> bb) {
+  const size_t num = a.size();
+  YACL_ENFORCE(num == b.size());
+  auto conn = ctx_->GetConnection();
+
+  const size_t B = 10;
+  auto perm = GenPerm(num);
+  std::vector<internal::ATy> rand(num);
+  RandomAuth(absl::MakeSpan(rand));
+  ot::OtHelper(ot_sender_, ot_receiver_).ASTSend(conn, perm, rand, a, b);
+
+  // std::vector<internal::ATy> zeros(B);
+  // std::vector<internal::ATy> xs(B);
+  // RandomAuth(absl::MakeSpan(xs));
+
+  for (size_t i = 0; i < B; ++i) {
+    auto _perm = GenPerm(num);
+    std::vector<internal::ATy> _rand(num);
+    std::vector<internal::ATy> _a(num);
+    std::vector<internal::ATy> _b(num);
+
+    RandomAuth(absl::MakeSpan(_rand));
+    ot::OtHelper(ot_sender_, ot_receiver_)
+        .ASTSend(conn, _perm, _rand, absl::MakeSpan(_a), absl::MakeSpan(_b));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()),
+                       b.size() * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
+                       _a.size() * 2));
+    auto p = OpenAndDelayCheck(absl::MakeConstSpan(b));
+    std::vector<internal::PTy> shuffle_p(num);
+    std::vector<size_t> shuffle_perm(num);
+    for (size_t i = 0; i < num; ++i) {
+      shuffle_p[_perm[i]] = p[i];
+      shuffle_perm[i] = _perm[perm[i]];
+    }
+
+    std::vector<internal::ATy> shuffle_p_A(num);
+    AuthSet(absl::MakeConstSpan(shuffle_p), absl::MakeSpan(shuffle_p_A));
+
+    internal::op::AddInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()),
+                       _b.size() * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_A.data()),
+                       shuffle_p_A.size() * 2));
+
+    // auto _b_x = _Func(absl::MakeConstSpan(_b), xs[i]);
+    // auto a_x = _Func(absl::MakeConstSpan(a), xs[i]);
+    // zeros[i] = {_b_x.val - a_x.val, _b_x.mac - a_x.mac};
+
+    AShareLineCombineDelayCheck(absl::MakeConstSpan(_b));
+    AShareLineCombineDelayCheck(absl::MakeConstSpan(a));
+
+    std::copy(_b.begin(), _b.end(), b.begin());
+    std::swap(perm, shuffle_perm);
+  }
+
+  // auto o = OpenAndDelayCheck(absl::MakeConstSpan(zeros));
+  // for (size_t i = 0; i < B; ++i) {
+  //   YACL_ENFORCE(o[i] == internal::PTy(0));
+  // }
+  return perm;
+}
+
+void TrueCorrelation::DoubleASTGet(
+    absl::Span<internal::ATy> a, absl::Span<internal::ATy> b,
+    [[maybe_unused]] absl::Span<internal::ATy> aa,
+    [[maybe_unused]] absl::Span<internal::ATy> bb) {
   const size_t num = a.size();
   YACL_ENFORCE(num == b.size());
   auto conn = ctx_->GetConnection();

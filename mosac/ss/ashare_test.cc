@@ -402,6 +402,60 @@ TEST(ProtocolTest, SShuffleTwoSideTest) {
   rank1.get();
 };
 
+// OptSShuffle (two side) Test
+TEST(ProtocolTest, OptSShuffleTwoSideTest) {
+  auto context = TestParam::GetContext();
+  size_t num = 100;
+
+  // back-end integer
+  typedef decltype(std::declval<internal::PTy>().GetVal()) INTEGER;
+
+  auto rank0 = std::async([&] {
+    auto prot = context[0]->GetState<Protocol>();
+    auto r_p = prot->RandP(num);
+    auto r_a = prot->P2A(r_p);
+    auto s_a = prot->OptSShuffleA(r_a);
+    auto s_p = prot->A2P(s_a);
+    EXPECT_EQ(prot->DelayCheck(), true);
+
+    std::vector<INTEGER> sort_r(num);
+    std::vector<INTEGER> sort_s(num);
+    memcpy(sort_r.data(), r_p.data(), num * sizeof(internal::PTy));
+    memcpy(sort_s.data(), s_p.data(), num * sizeof(internal::PTy));
+
+    std::sort(sort_r.begin(), sort_r.end());
+    std::sort(sort_s.begin(), sort_s.end());
+
+    for (size_t i = 0; i < num; ++i) {
+      EXPECT_EQ(sort_r[i], sort_s[i]);
+    }
+    return 0;
+  });
+  auto rank1 = std::async([&] {
+    auto prot = context[1]->GetState<Protocol>();
+    auto r_p = prot->RandP(num);
+    auto r_a = prot->P2A(r_p);
+    auto s_a = prot->OptSShuffleA(r_a);
+    auto s_p = prot->A2P(s_a);
+    EXPECT_EQ(prot->DelayCheck(), true);
+
+    std::vector<INTEGER> sort_r(num);
+    std::vector<INTEGER> sort_s(num);
+    memcpy(sort_r.data(), r_p.data(), num * sizeof(internal::PTy));
+    memcpy(sort_s.data(), s_p.data(), num * sizeof(internal::PTy));
+
+    std::sort(sort_r.begin(), sort_r.end());
+    std::sort(sort_s.begin(), sort_s.end());
+
+    for (size_t i = 0; i < num; ++i) {
+      EXPECT_EQ(sort_r[i], sort_s[i]);
+    }
+    return 0;
+  });
+  rank0.get();
+  rank1.get();
+};
+
 // NMul Test
 TEST(ProtocolTest, NMulATest) {
   auto context = TestParam::GetContext();

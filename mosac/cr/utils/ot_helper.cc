@@ -717,4 +717,31 @@ void OtHelper::BatchASTRecv(std::shared_ptr<Connection>& conn, size_t total_num,
   shuffle::BatchASTRecv(conn, ot_sender_, total_num, per_size, r, lhs, rhs);
 }
 
+// ---------------------
+//  Double AST
+// ---------------------
+
+void OtHelper::DoubleASTSend(std::shared_ptr<Connection>& conn,
+                             absl::Span<const size_t> perm,
+                             absl::Span<const internal::ATy> r,
+                             absl::Span<internal::ATy> a,
+                             absl::Span<internal::ATy> b,
+                             /* double AST */
+                             absl::Span<const internal::ATy> rr,
+                             absl::Span<internal::ATy> aa,
+                             absl::Span<internal::ATy> bb) {
+  shuffle::DoubleASTSend(conn, ot_receiver_, perm, r, a, b, rr, aa, bb);
+}
+
+void OtHelper::DoubleASTRecv(std::shared_ptr<Connection>& conn,
+                             absl::Span<const internal::ATy> r,
+                             absl::Span<internal::ATy> a,
+                             absl::Span<internal::ATy> b,
+                             /* double AST */
+                             absl::Span<const internal::ATy> rr,
+                             absl::Span<internal::ATy> aa,
+                             absl::Span<internal::ATy> bb) {
+  shuffle::DoubleASTRecv(conn, ot_sender_, r, a, b, rr, aa, bb);
+}
+
 }  // namespace mosac::ot

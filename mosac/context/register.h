@@ -34,12 +34,16 @@ void inline SetupContext(std::shared_ptr<Context> ctx, bool CR_mode = true) {
   // 2. ctx->GetState<Correlation>()->OneTimeSetup();
   // Set SPDZ key
   ctx->GetState<Correlation>()->SetKey(key);
+
+  auto vole_key = internal::PTy::Rand();
+  ctx->GetState<Correlation>()->SetVoleKey(vole_key);
+  ctx->GetState<Correlation>()->OneTimeSetup();
 }
 
 void inline MockSetupContext(std::vector<std::shared_ptr<Context>>& ctxs) {
   YACL_ENFORCE(ctxs.size() == 2);
-  auto task0 = std::async([&] { SetupContext(ctxs[0]); });
-  auto task1 = std::async([&] { SetupContext(ctxs[1]); });
+  auto task0 = std::async([&] { SetupContext(ctxs[0], false); });
+  auto task1 = std::async([&] { SetupContext(ctxs[1], false); });
   task0.get();
   task1.get();
 }

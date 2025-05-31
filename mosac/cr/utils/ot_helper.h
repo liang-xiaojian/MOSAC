@@ -125,6 +125,23 @@ class OtHelper {
                     std::vector<std::vector<internal::ATy>>& lhs,
                     std::vector<std::vector<internal::ATy>>& rhs);
 
+  void DoubleASTSend(std::shared_ptr<Connection>& conn,
+                     absl::Span<const size_t> perm,
+                     absl::Span<const internal::ATy> r,
+                     absl::Span<internal::ATy> a, absl::Span<internal::ATy> b,
+                     /* double AST */
+                     absl::Span<const internal::ATy> rr,
+                     absl::Span<internal::ATy> aa,
+                     absl::Span<internal::ATy> bb);
+
+  void DoubleASTRecv(std::shared_ptr<Connection>& conn,
+                     absl::Span<const internal::ATy> r,
+                     absl::Span<internal::ATy> a, absl::Span<internal::ATy> b,
+                     /* double AST */
+                     absl::Span<const internal::ATy> rr,
+                     absl::Span<internal::ATy> aa,
+                     absl::Span<internal::ATy> bb);
+
  private:
   std::shared_ptr<OtAdapter> ot_sender_{nullptr};
   std::shared_ptr<OtAdapter> ot_receiver_{nullptr};

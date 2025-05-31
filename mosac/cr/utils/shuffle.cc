@@ -1725,4 +1725,293 @@ void BatchASTRecv(std::shared_ptr<Connection> conn,
   YACL_ENFORCE(flag == true);
 }
 
+// ------ gywz ote baesd Double AST ----------
+std::pair<std::vector<uint128_t>, std::vector<uint128_t>>
+DoubleASTSend_internal(std::shared_ptr<Connection>& conn,
+                       yc::OtRecvStore& ot_store, absl::Span<const size_t> perm,
+                       absl::Span<const internal::ATy> r,
+                       absl::Span<internal::ATy> lhs,
+                       absl::Span<internal::ATy> rhs,
+                       /* double AST */
+                       absl::Span<const internal::ATy> rr,
+                       absl::Span<internal::ATy> llhs,
+                       absl::Span<internal::ATy> rrhs) {
+  const size_t num = perm.size();
+  const size_t ot_num = ym::Log2Ceil(num);
+  const size_t required_ot = num * ot_num;
+
+  YACL_ENFORCE(r.size() == num);
+  YACL_ENFORCE(lhs.size() == num);
+  YACL_ENFORCE(rhs.size() == num);
+
+  YACL_ENFORCE(rr.size() == num);
+  YACL_ENFORCE(llhs.size() == num);
+  YACL_ENFORCE(rrhs.size() == num);
+
+  YACL_ENFORCE(ot_store.Size() == required_ot);
+
+  const size_t repeat = 4;
+  const size_t full_size = num * repeat;
+
+  YACL_ENFORCE(repeat < kPrfKey.size());
+
+  auto [r_val, r_mac] = internal::Unpack(r);
+  auto [rr_val, rr_mac] = internal::Unpack(rr);
+
+  std::vector<internal::PTy> a(full_size, internal::PTy(0));
+  std::vector<internal::PTy> b(full_size, internal::PTy(0));
+  // gywz ote buff
+  std::vector<internal::PTy> opv(full_size);
+  std::vector<uint128_t> punctured_msgs(num);
+  // for consistency check
+  std::vector<uint128_t> check_a(num, 0);
+  std::vector<uint128_t> check_b(num, 0);
+
+  for (size_t i = 0; i < num; ++i) {
+    auto ot_recv = ot_store.NextSlice(ot_num);
+    yc::GywzOtExtRecv_fixed_index(conn, ot_recv, num,
+                                  absl::MakeSpan(punctured_msgs));
+    // break correlation
+    auto extend = SeedExtend(absl::MakeSpan(punctured_msgs), repeat + 1);
+    // set punctured point to be zero
+    for (size_t _ = 0; _ < repeat; ++_) {
+      extend[_ * num + perm[i]] = 0;
+    }
+
+    std::transform(extend.cbegin(), extend.cbegin() + full_size, opv.begin(),
+                   [](const uint128_t& val) { return internal::PTy(val); });
+
+    // ---- consistency check ----
+    std::transform(extend.cbegin() + full_size, extend.cend(), check_a.begin(),
+                   check_a.begin(), std::bit_xor<uint128_t>());
+    check_b[i] = std::reduce(extend.cbegin() + full_size, extend.cend(),
+                             uint128_t(0), std::bit_xor<uint128_t>());
+    // ---- consistency check ----
+
+    internal::op::AddInplace(absl::MakeSpan(a), absl::MakeConstSpan(opv));
+    for (size_t _ = 0; _ < repeat; ++_) {
+      const size_t offset = _ * num;
+      b[offset + i] =
+          std::reduce(opv.begin() + offset, opv.begin() + offset + num,
+                      internal::PTy(0), internal::PTy::Add);
+    }
+  }
+
+  auto recv_buff = conn->Recv(conn->NextRank(), "shuffle: r_sub_b");
+  YACL_ENFORCE(recv_buff.size() ==
+               static_cast<int>(full_size * sizeof(internal::PTy)));
+  auto r_sub_b = absl::MakeSpan(recv_buff.data<internal::PTy>(), full_size);
+
+  internal::op::AddInplace(r_sub_b.subspan(0, num), absl::MakeConstSpan(r_val));
+  internal::op::AddInplace(r_sub_b.subspan(num, num),
+                           absl::MakeConstSpan(r_mac));
+
+  internal::op::AddInplace(r_sub_b.subspan(2 * num, num),
+                           absl::MakeConstSpan(rr_val));
+  internal::op::AddInplace(r_sub_b.subspan(3 * num, num),
+                           absl::MakeConstSpan(rr_mac));
+
+  for (size_t i = 0; i < num; ++i) {
+    // first one
+    a[perm[i]] = r_sub_b[i] + b[i] - a[perm[i]];  // value
+    a[perm[i] + num] = r_sub_b[i + num] + b[i + num] - a[perm[i] + num];  // mac
+
+    // second one
+    a[perm[i] + 2 * num] =
+        r_sub_b[i] + b[i + 2 * num] - a[perm[i] + 3 * num];  // value
+    a[perm[i] + 3 * num] =
+        r_sub_b[i + num] + b[i + 3 * num] - a[perm[i] + 3 * num];  // mac
+  }
+
+  // the first AST
+  internal::Pack(absl::MakeConstSpan(r_sub_b).subspan(0, num),
+                 absl::MakeConstSpan(r_sub_b).subspan(num, num), lhs);
+  internal::Pack(absl::MakeConstSpan(a).subspan(0, num),
+                 absl::MakeConstSpan(a).subspan(num, num), rhs);
+  // the second AST
+  internal::Pack(absl::MakeConstSpan(r_sub_b).subspan(2 * num, num),
+                 absl::MakeConstSpan(r_sub_b).subspan(3 * num, num), lhs);
+  internal::Pack(absl::MakeConstSpan(a).subspan(2 * num, num),
+                 absl::MakeConstSpan(a).subspan(3 * num, num), rhs);
+
+  return std::make_pair(std::move(check_a), std::move(check_b));
+}
+
+std::pair<std::vector<uint128_t>, std::vector<uint128_t>>
+DoubleASTRecv_internal(std::shared_ptr<Connection> conn,
+                       yc::OtSendStore& ot_store,
+                       absl::Span<const internal::ATy> r,
+                       absl::Span<internal::ATy> lhs,
+                       absl::Span<internal::ATy> rhs,
+                       /* double AST */
+                       absl::Span<const internal::ATy> rr,
+                       absl::Span<internal::ATy> llhs,
+                       absl::Span<internal::ATy> rrhs) {
+  const size_t num = r.size();
+  const size_t ot_num = ym::Log2Ceil(num);
+  const size_t required_ot = num * ot_num;
+
+  YACL_ENFORCE(lhs.size() == num);
+  YACL_ENFORCE(rhs.size() == num);
+  YACL_ENFORCE(ot_store.Size() == required_ot);
+
+  const size_t repeat = 4;
+  const size_t full_size = num * repeat;
+
+  YACL_ENFORCE(repeat < kPrfKey.size());
+
+  auto [r_val, r_mac] = internal::Unpack(r);
+  auto [rr_val, rr_mac] = internal::Unpack(rr);
+
+  std::vector<internal::PTy> a(full_size, internal::PTy(0));
+  std::vector<internal::PTy> b(full_size, internal::PTy(0));
+  std::vector<internal::PTy> opv(full_size);
+  std::vector<uint128_t> all_msgs(num);
+  // for consistency check
+  std::vector<uint128_t> check_a(num, 0);
+  std::vector<uint128_t> check_b(num, 0);
+
+  std::vector<uint128_t> ot_buff(required_ot);
+
+  for (size_t i = 0; i < num; ++i) {
+    auto ot_send = ot_store.NextSlice(ot_num);
+    yc::GywzOtExtSend_fixed_index(conn, ot_send, num, absl::MakeSpan(all_msgs));
+    // break correlation
+    auto extend = SeedExtend(absl::MakeSpan(all_msgs), repeat + 1);
+
+    std::transform(extend.cbegin(), extend.cbegin() + full_size, opv.begin(),
+                   [](const uint128_t& val) { return internal::PTy(val); });
+
+    // ---- consistency check ----
+    std::transform(extend.cbegin() + full_size, extend.cend(), check_a.begin(),
+                   check_a.begin(), std::bit_xor<uint128_t>());
+    check_b[i] = std::reduce(extend.cbegin() + full_size, extend.cend(),
+                             uint128_t(0), std::bit_xor<uint128_t>());
+    // ---- consistency check ----
+
+    internal::op::AddInplace(absl::MakeSpan(a), absl::MakeConstSpan(opv));
+    for (size_t _ = 0; _ < repeat; ++_) {
+      const size_t offset = _ * num;
+      b[offset + i] =
+          std::reduce(opv.begin() + offset, opv.begin() + offset + num,
+                      internal::PTy(0), internal::PTy::Add);
+    }
+  }
+
+  std::vector<internal::PTy> r_sub_b(full_size, internal::PTy(0));
+
+  internal::op::Sub(absl::MakeConstSpan(r_val),
+                    absl::MakeConstSpan(b).subspan(0, num),
+                    absl::MakeSpan(r_sub_b).subspan(0, num));
+  internal::op::Sub(absl::MakeConstSpan(r_mac),
+                    absl::MakeConstSpan(b).subspan(num, num),
+                    absl::MakeSpan(r_sub_b).subspan(num, num));
+
+  internal::op::Sub(absl::MakeConstSpan(rr_val),
+                    absl::MakeConstSpan(b).subspan(2 * num, num),
+                    absl::MakeSpan(r_sub_b).subspan(3 * num, num));
+  internal::op::Sub(absl::MakeConstSpan(rr_mac),
+                    absl::MakeConstSpan(b).subspan(2 * num, num),
+                    absl::MakeSpan(r_sub_b).subspan(3 * num, num));
+
+  conn->SendAsync(conn->NextRank(),
+                  yacl::ByteContainerView(
+                      r_sub_b.data(), r_sub_b.size() * sizeof(internal::PTy)),
+                  "shuffle: r_sub_b");
+
+  internal::Pack(absl::MakeConstSpan(b).subspan(0, num),
+                 absl::MakeConstSpan(b).subspan(num, num), absl::MakeSpan(lhs));
+  internal::Pack(absl::MakeConstSpan(a).subspan(0, num),
+                 absl::MakeConstSpan(a).subspan(num, num), absl::MakeSpan(rhs));
+
+  internal::Pack(absl::MakeConstSpan(b).subspan(2 * num, num),
+                 absl::MakeConstSpan(b).subspan(3 * num, num),
+                 absl::MakeSpan(llhs));
+  internal::Pack(absl::MakeConstSpan(a).subspan(2 * num, num),
+                 absl::MakeConstSpan(a).subspan(3 * num, num),
+                 absl::MakeSpan(rrhs));
+
+  return std::make_pair(std::move(check_a), std::move(check_b));
+}
+
+void DoubleASTSend(std::shared_ptr<Connection>& conn,
+                   std::shared_ptr<ot::OtAdapter>& ot_ptr,
+                   absl::Span<const size_t> perm,
+                   absl::Span<const internal::ATy> r,
+                   absl::Span<internal::ATy> lhs, absl::Span<internal::ATy> rhs,
+                   /* double AST */
+                   absl::Span<const internal::ATy> rr,
+                   absl::Span<internal::ATy> llhs,
+                   absl::Span<internal::ATy> rrhs) {
+  YACL_ENFORCE(ot_ptr->IsSender() == false);
+  const size_t num = perm.size();
+  const size_t ot_num = ym::Log2Ceil(num);
+  const size_t required_ot = num * ot_num;
+
+  YACL_ENFORCE(r.size() == num);
+  YACL_ENFORCE(lhs.size() == num);
+  YACL_ENFORCE(rhs.size() == num);
+
+  YACL_ENFORCE(rr.size() == num);
+  YACL_ENFORCE(llhs.size() == num);
+  YACL_ENFORCE(rrhs.size() == num);
+
+  yacl::dynamic_bitset<uint128_t> choices;
+  for (size_t i = 0; i < num; ++i) {
+    yacl::dynamic_bitset<uint128_t> tmp_choices;
+    tmp_choices.append(perm[i]);
+    tmp_choices.resize(ot_num);
+    choices.append(tmp_choices);
+  }
+
+  YACL_ENFORCE(choices.size() == required_ot);
+
+  std::vector<uint128_t> ot_buff(required_ot);
+  ot_ptr->recv_cot(absl::MakeSpan(ot_buff), choices);
+  auto ot_store = yc::MakeOtRecvStore(choices, ot_buff);
+
+  auto [check_a, check_b] =
+      DoubleASTSend_internal(conn, ot_store, perm, r, lhs, rhs, rr, llhs, rrhs);
+  std::vector<std::vector<uint128_t>> check_aa(1, check_a);
+  std::vector<std::vector<uint128_t>> check_bb(1, check_b);
+
+  std::vector<std::vector<size_t>> permm(1, std::vector<size_t>(num, 0));
+  std::copy(perm.begin(), perm.end(), permm[0].begin());
+  auto flag = BatchASTSend_check(conn, permm, check_aa, check_bb);
+  YACL_ENFORCE(flag == true);
+}
+
+void DoubleASTRecv(std::shared_ptr<Connection>& conn,
+                   std::shared_ptr<ot::OtAdapter>& ot_ptr,
+                   absl::Span<const internal::ATy> r,
+                   absl::Span<internal::ATy> lhs, absl::Span<internal::ATy> rhs,
+                   /* double AST */
+                   absl::Span<const internal::ATy> rr,
+                   absl::Span<internal::ATy> llhs,
+                   absl::Span<internal::ATy> rrhs) {
+  YACL_ENFORCE(ot_ptr->IsSender() == true);
+
+  const size_t num = r.size();
+  const size_t ot_num = ym::Log2Ceil(num);
+  const size_t required_ot = num * ot_num;
+
+  YACL_ENFORCE(lhs.size() == num);
+  YACL_ENFORCE(rhs.size() == num);
+
+  YACL_ENFORCE(rr.size() == num);
+  YACL_ENFORCE(llhs.size() == num);
+  YACL_ENFORCE(rrhs.size() == num);
+
+  std::vector<uint128_t> ot_buff(required_ot);
+  ot_ptr->send_cot(absl::MakeSpan(ot_buff));
+  auto ot_store = yc::MakeCompactOtSendStore(ot_buff, ot_ptr->GetDelta());
+
+  auto [check_a, check_b] =
+      DoubleASTRecv_internal(conn, ot_store, r, lhs, rhs, rr, llhs, rrhs);
+  std::vector<std::vector<uint128_t>> check_aa(1, check_a);
+  std::vector<std::vector<uint128_t>> check_bb(1, check_b);
+  auto flag = BatchASTRecv_check(conn, check_aa, check_bb);
+  YACL_ENFORCE(flag == true);
+}
+
 }  // namespace mosac::shuffle

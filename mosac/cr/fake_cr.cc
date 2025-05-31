@@ -72,6 +72,26 @@ void FakeCorrelation::RandomAuth(absl::Span<internal::ATy> out) {
       absl::MakeSpan(reinterpret_cast<internal::PTy*>(out.data()), 2 * num));
 }
 
+void FakeCorrelation::RandomVoleSet(absl::Span<internal::PTy> a,
+                                    absl::Span<internal::PTy> b) {
+  const size_t num = a.size();
+  auto ra = internal::op::Rand(*ctx_->GetState<Prg>(), num);
+  auto rb = internal::op::Rand(*ctx_->GetState<Prg>(), num);
+
+  std::copy(ra.begin(), ra.end(), a.begin());
+  std::copy(rb.begin(), rb.end(), b.begin());
+}
+
+void FakeCorrelation::RandomVoleGet(absl::Span<internal::PTy> c) {
+  const size_t num = c.size();
+  auto ra = internal::op::Rand(*ctx_->GetState<Prg>(), num);
+  auto rb = internal::op::Rand(*ctx_->GetState<Prg>(), num);
+
+  auto mul = internal::op::ScalarMul(vole_key_, absl::MakeSpan(ra));
+  auto rc = internal::op::Add(absl::MakeSpan(mul), absl::MakeSpan(rb));
+  std::copy(rc.begin(), rc.end(), c.begin());
+}
+
 void FakeCorrelation::ShuffleSet(absl::Span<const size_t> perm,
                                  absl::Span<internal::PTy> delta,
                                  size_t repeat) {
@@ -180,9 +200,29 @@ std::vector<size_t> FakeCorrelation::ASTSet(absl::Span<internal::ATy> a,
   std::vector<uint128_t> seeds(1);
   ctx_->GetState<Prg>()->Fill(absl::MakeSpan(seeds));
   std::vector<size_t> perm = GenPerm(seeds[0], size);
-  RandomAuth(b);
+  RandomAuth(a);
   for (size_t i = 0; i < size; ++i) {
     b[perm[i]] = a[i];
+  }
+  return perm;
+}
+
+std::vector<size_t> FakeCorrelation::DoubleASTSet(
+    absl::Span<internal::ATy> a, absl::Span<internal::ATy> b,
+    absl::Span<internal::ATy> aa, absl::Span<internal::ATy> bb) {
+  const size_t size = a.size();
+  YACL_ENFORCE(size == b.size());
+  YACL_ENFORCE(size == aa.size());
+  YACL_ENFORCE(size == bb.size());
+
+  std::vector<uint128_t> seeds(1);
+  ctx_->GetState<Prg>()->Fill(absl::MakeSpan(seeds));
+  std::vector<size_t> perm = GenPerm(seeds[0], size);
+  RandomAuth(a);
+  RandomAuth(aa);
+  for (size_t i = 0; i < size; ++i) {
+    b[perm[i]] = a[i];
+    bb[perm[i]] = aa[i];
   }
   return perm;
 }
@@ -198,7 +238,7 @@ void FakeCorrelation::ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
   std::vector<uint128_t> seeds(1);
   ctx_->GetState<Prg>()->Fill(absl::MakeSpan(seeds));
   std::vector<size_t> perm = GenPerm(seeds[0], size);
-  RandomAuth(b);
+  RandomAuth(a);
   for (size_t i = 0; i < size; ++i) {
     b[perm[i]] = a[i];
   }
@@ -216,7 +256,7 @@ std::vector<size_t> FakeCorrelation::ASTSet_2k(size_t T,
   std::vector<uint128_t> seeds(1);
   ctx_->GetState<Prg>()->Fill(absl::MakeSpan(seeds));
   std::vector<size_t> perm = GenPerm(seeds[0], size);
-  RandomAuth(b);
+  RandomAuth(a);
   for (size_t i = 0; i < size; ++i) {
     b[perm[i]] = a[i];
   }
@@ -230,9 +270,28 @@ void FakeCorrelation::ASTGet(absl::Span<internal::ATy> a,
   std::vector<uint128_t> seeds(1);
   ctx_->GetState<Prg>()->Fill(absl::MakeSpan(seeds));
   std::vector<size_t> perm = GenPerm(seeds[0], size);
-  RandomAuth(b);
+  RandomAuth(a);
   for (size_t i = 0; i < size; ++i) {
     b[perm[i]] = a[i];
+  }
+}
+
+void FakeCorrelation::DoubleASTGet(absl::Span<internal::ATy> a,
+                                   absl::Span<internal::ATy> b,
+                                   absl::Span<internal::ATy> aa,
+                                   absl::Span<internal::ATy> bb) {
+  const size_t size = a.size();
+  YACL_ENFORCE(size == b.size());
+  YACL_ENFORCE(size == aa.size());
+  YACL_ENFORCE(size == bb.size());
+  std::vector<uint128_t> seeds(1);
+  ctx_->GetState<Prg>()->Fill(absl::MakeSpan(seeds));
+  std::vector<size_t> perm = GenPerm(seeds[0], size);
+  RandomAuth(a);
+  RandomAuth(aa);
+  for (size_t i = 0; i < size; ++i) {
+    b[perm[i]] = a[i];
+    bb[perm[i]] = aa[i];
   }
 }
 
@@ -244,20 +303,22 @@ internal::ATy FakeCorrelation::NMul(absl::Span<internal::ATy> r) {
   auto rand = internal::op::Add(absl::MakeSpan(rand0), absl::MakeSpan(rand1));
   auto mac = internal::op::ScalarMul(key_, absl::MakeSpan(rand));
 
-  internal::PTy mul_val = std::reduce(rand.begin(), rand.end(),
-                                      internal::PTy(1), internal::PTy::Mul);
+  internal::PTy mul_val = internal::PTy(1);
+  for (size_t i = 0; i < size; ++i) {
+    mul_val = mul_val * rand[i];
+  }
   internal::PTy mul_inv_val = internal::PTy::Inv(mul_val);
   internal::PTy mul_inv_mac = mul_inv_val * key_;
 
-  internal::ATy ret;
+  std::vector<internal::ATy> ret;
   if (ctx_->GetRank() == 0) {
     internal::Pack(absl::MakeConstSpan(rand0), absl::MakeConstSpan(mac), r);
-    ret = {mul_inv_val, mul_inv_mac};
+    ret.push_back({mul_inv_val, mul_inv_mac});
   } else {
     internal::Pack(absl::MakeConstSpan(rand1), absl::MakeConstSpan(mac), r);
-    ret = {0, mul_inv_mac};
+    ret.push_back({0, mul_inv_mac});
   }
-  return ret;
+  return ret[0];
 }
 
 }  // namespace mosac
