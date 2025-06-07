@@ -152,7 +152,9 @@ INSTANTIATE_TEST_SUITE_P(Works, VoleAdapterTest,
                                          VoleTestParam{1 << 20}));
 
 INSTANTIATE_TEST_SUITE_P(Works, SilentVoleAdapterTest,
-                         testing::Values(SilentVoleTestParam{1 << 14},
+                         testing::Values(SilentVoleTestParam{32},
+                                         SilentVoleTestParam{64},
+                                         SilentVoleTestParam{1 << 14},
                                          SilentVoleTestParam{1 << 16},
                                          SilentVoleTestParam{1 << 18},
                                          SilentVoleTestParam{1 << 20}));

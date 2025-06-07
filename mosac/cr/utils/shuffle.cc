@@ -1818,9 +1818,9 @@ DoubleASTSend_internal(std::shared_ptr<Connection>& conn,
 
     // second one
     a[perm[i] + 2 * num] =
-        r_sub_b[i] + b[i + 2 * num] - a[perm[i] + 3 * num];  // value
+        r_sub_b[i + 2 * num] + b[i + 2 * num] - a[perm[i] + 2 * num];  // value
     a[perm[i] + 3 * num] =
-        r_sub_b[i + num] + b[i + 3 * num] - a[perm[i] + 3 * num];  // mac
+        r_sub_b[i + 3 * num] + b[i + 3 * num] - a[perm[i] + 3 * num];  // mac
   }
 
   // the first AST
@@ -1830,9 +1830,9 @@ DoubleASTSend_internal(std::shared_ptr<Connection>& conn,
                  absl::MakeConstSpan(a).subspan(num, num), rhs);
   // the second AST
   internal::Pack(absl::MakeConstSpan(r_sub_b).subspan(2 * num, num),
-                 absl::MakeConstSpan(r_sub_b).subspan(3 * num, num), lhs);
+                 absl::MakeConstSpan(r_sub_b).subspan(3 * num, num), llhs);
   internal::Pack(absl::MakeConstSpan(a).subspan(2 * num, num),
-                 absl::MakeConstSpan(a).subspan(3 * num, num), rhs);
+                 absl::MakeConstSpan(a).subspan(3 * num, num), rrhs);
 
   return std::make_pair(std::move(check_a), std::move(check_b));
 }
@@ -1909,9 +1909,9 @@ DoubleASTRecv_internal(std::shared_ptr<Connection> conn,
 
   internal::op::Sub(absl::MakeConstSpan(rr_val),
                     absl::MakeConstSpan(b).subspan(2 * num, num),
-                    absl::MakeSpan(r_sub_b).subspan(3 * num, num));
+                    absl::MakeSpan(r_sub_b).subspan(2 * num, num));
   internal::op::Sub(absl::MakeConstSpan(rr_mac),
-                    absl::MakeConstSpan(b).subspan(2 * num, num),
+                    absl::MakeConstSpan(b).subspan(3 * num, num),
                     absl::MakeSpan(r_sub_b).subspan(3 * num, num));
 
   conn->SendAsync(conn->NextRank(),

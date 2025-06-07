@@ -257,7 +257,7 @@ TEST(CrTest, NMulTest) {
 
 TEST(CrTest, ASTWork) {
   auto context = TestParam::GetContext();
-  const size_t num = 1 << 4;
+  const size_t num = 1 << 10;
 
   auto rank0 = std::async([&] {
     auto cr = context[0]->GetState<Correlation>();
@@ -370,7 +370,7 @@ TEST(CrTest, ASTWork_2k) {
 
 TEST(CrTest, DoubleASTWork) {
   auto context = TestParam::GetContext();
-  const size_t num = 1 << 4;
+  const size_t num = 1 << 10;
 
   auto rank0 = std::async([&] {
     auto cr = context[0]->GetState<Correlation>();

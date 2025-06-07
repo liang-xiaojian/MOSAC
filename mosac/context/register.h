@@ -42,8 +42,8 @@ void inline SetupContext(std::shared_ptr<Context> ctx, bool CR_mode = true) {
 
 void inline MockSetupContext(std::vector<std::shared_ptr<Context>>& ctxs) {
   YACL_ENFORCE(ctxs.size() == 2);
-  auto task0 = std::async([&] { SetupContext(ctxs[0], false); });
-  auto task1 = std::async([&] { SetupContext(ctxs[1], false); });
+  auto task0 = std::async([&] { SetupContext(ctxs[0], true); });
+  auto task1 = std::async([&] { SetupContext(ctxs[1], true); });
   task0.get();
   task1.get();
 }

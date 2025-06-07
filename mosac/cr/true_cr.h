@@ -99,8 +99,8 @@ class TrueCorrelation : public Correlation {
 
     auto conn = ctx_->GetConnection();
     if (ctx_->GetRank() == 0) {
-      extra_vole_sender_ =
-          std::make_shared<vole::WolverineVoleAdapter>(conn, ot_sender_, key_);
+      extra_vole_sender_ = std::make_shared<vole::WolverineVoleAdapter>(
+          conn, ot_sender_, vole_key_);
       extra_vole_sender_->OneTimeSetup();
 
       extra_vole_receiver_ =
@@ -111,8 +111,8 @@ class TrueCorrelation : public Correlation {
           std::make_shared<vole::WolverineVoleAdapter>(conn, ot_receiver_);
       extra_vole_receiver_->OneTimeSetup();
 
-      extra_vole_sender_ =
-          std::make_shared<vole::WolverineVoleAdapter>(conn, ot_sender_, key_);
+      extra_vole_sender_ = std::make_shared<vole::WolverineVoleAdapter>(
+          conn, ot_sender_, vole_key_);
       extra_vole_sender_->OneTimeSetup();
     }
     setup_extra_vole_ = true;
