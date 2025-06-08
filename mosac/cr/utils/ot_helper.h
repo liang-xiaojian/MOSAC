@@ -142,6 +142,26 @@ class OtHelper {
                      absl::Span<internal::ATy> aa,
                      absl::Span<internal::ATy> bb);
 
+  void BatchDoubleASTSend(std::shared_ptr<Connection>& conn, size_t total_num,
+                          size_t per_size,
+                          const std::vector<std::vector<size_t>>& perms,
+                          absl::Span<const internal::ATy> r,
+                          std::vector<std::vector<internal::ATy>>& lhs,
+                          std::vector<std::vector<internal::ATy>>& rhs,
+                          /* double AST */
+                          absl::Span<const internal::ATy> rr,
+                          std::vector<std::vector<internal::ATy>>& llhs,
+                          std::vector<std::vector<internal::ATy>>& rrhs);
+
+  void BatchDoubleASTRecv(std::shared_ptr<Connection>& conn, size_t total_num,
+                          size_t per_size, absl::Span<const internal::ATy> r,
+                          std::vector<std::vector<internal::ATy>>& lhs,
+                          std::vector<std::vector<internal::ATy>>& rhs,
+                          /* double AST */
+                          absl::Span<const internal::ATy> rr,
+                          std::vector<std::vector<internal::ATy>>& llhs,
+                          std::vector<std::vector<internal::ATy>>& rrhs);
+
  private:
   std::shared_ptr<OtAdapter> ot_sender_{nullptr};
   std::shared_ptr<OtAdapter> ot_receiver_{nullptr};

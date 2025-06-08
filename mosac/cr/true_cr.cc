@@ -488,8 +488,7 @@ void TrueCorrelation::ASTGet(absl::Span<internal::ATy> a,
   // }
 }
 
-// AST [Warning DNF]
-
+// DoubleAST
 std::vector<internal::ATy> MulHelperSet(
     const std::shared_ptr<Connection>& conn, absl::Span<const internal::ATy> in,
     absl::Span<const internal::PTy> vole_a,
@@ -542,36 +541,68 @@ std::vector<size_t> TrueCorrelation::DoubleASTSet(
   YACL_ENFORCE(aa.size() == num);
   YACL_ENFORCE(bb.size() == num);
 
-  std::vector<internal::ATy> r(num);
-  RandomAuth(absl::MakeSpan(r));
+  // std::vector<internal::ATy> r(num);
+  // RandomAuth(absl::MakeSpan(r));
 
-  std::vector<internal::ATy> rr(num);
-  RandomAuth(absl::MakeSpan(rr));
+  // std::vector<internal::ATy> rr(num);
+  // RandomAuth(absl::MakeSpan(rr));
 
-  auto perm = GenPerm(num);
+  // auto perm = GenPerm(num);
 
-  ot::OtHelper(ot_sender_, ot_receiver_)
-      .DoubleASTSend(conn, perm, r, a, b, rr, aa, bb);
-
+  // ot::OtHelper(ot_sender_, ot_receiver_)
+  //     .DoubleASTSend(conn, perm, r, a, b, rr, aa, bb);
   const size_t B = 5;
 
+  std::vector<std::vector<internal::ATy>> a_vec;
+  std::vector<std::vector<internal::ATy>> b_vec;
+  std::vector<std::vector<internal::ATy>> aa_vec;
+  std::vector<std::vector<internal::ATy>> bb_vec;
+
+  std::vector<std::vector<size_t>> perm_vec;
+  std::vector<internal::ATy> r_vec(num * B);
+  std::vector<internal::ATy> rr_vec(num * B);
+
+  RandomAuth(absl::MakeSpan(r_vec));
+  RandomAuth(absl::MakeSpan(rr_vec));
+
+  for (size_t i = 0; i < B; ++i) {
+    perm_vec.push_back(GenPerm(num));
+  }
+
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .BatchDoubleASTSend(conn, B, num, perm_vec, r_vec, a_vec, b_vec, rr_vec,
+                          aa_vec, bb_vec);
+
+  auto perm = perm_vec[0];
+  std::copy(a_vec[0].begin(), a_vec[0].end(), a.begin());
+  std::copy(b_vec[0].begin(), b_vec[0].end(), b.begin());
+
+  std::copy(aa_vec[0].begin(), aa_vec[0].end(), aa.begin());
+  std::copy(bb_vec[0].begin(), bb_vec[0].end(), bb.begin());
+
   for (size_t i = 1; i < B; ++i) {
-    std::vector<internal::ATy> _a(num, {0, 0});
-    std::vector<internal::ATy> _aa(num, {0, 0});
-    std::vector<internal::ATy> _b(num, {0, 0});
-    std::vector<internal::ATy> _bb(num, {0, 0});
+    // std::vector<internal::ATy> _a(num, {0, 0});
+    // std::vector<internal::ATy> _aa(num, {0, 0});
+    // std::vector<internal::ATy> _b(num, {0, 0});
+    // std::vector<internal::ATy> _bb(num, {0, 0});
 
-    std::vector<internal::ATy> _r(num);
-    RandomAuth(absl::MakeSpan(_r));
+    // std::vector<internal::ATy> _r(num);
+    // RandomAuth(absl::MakeSpan(_r));
 
-    std::vector<internal::ATy> _rr(num);
-    RandomAuth(absl::MakeSpan(_rr));
+    // std::vector<internal::ATy> _rr(num);
+    // RandomAuth(absl::MakeSpan(_rr));
 
-    auto _perm = GenPerm(num);
+    // auto _perm = GenPerm(num);
 
-    ot::OtHelper(ot_sender_, ot_receiver_)
-        .DoubleASTSend(conn, _perm, _r, absl::MakeSpan(_a), absl::MakeSpan(_b),
-                       _rr, absl::MakeSpan(_aa), absl::MakeSpan(_bb));
+    // ot::OtHelper(ot_sender_, ot_receiver_)
+    //     .DoubleASTSend(conn, _perm, _r, absl::MakeSpan(_a),
+    //     absl::MakeSpan(_b),
+    //                    _rr, absl::MakeSpan(_aa), absl::MakeSpan(_bb));
+    auto _a = a_vec[i];
+    auto _b = b_vec[i];
+    auto _aa = aa_vec[i];
+    auto _bb = bb_vec[i];
+    auto _perm = perm_vec[i];
 
     // shuffle b and bb with (_a,_b) and (_aa,_bb)
     // 1. compute b * R
@@ -582,8 +613,8 @@ std::vector<size_t> TrueCorrelation::DoubleASTSet(
         std::make_shared<vole::SilentVoleAdapter>(conn, ot_receiver_);
     vole_receiver_R->OneTimeSetup();
 
-    std::vector<internal::PTy> tmp_a(4 * num, 0);
-    std::vector<internal::PTy> tmp_b(4 * num, 0);
+    std::vector<internal::PTy> tmp_a(8 * num, 0);
+    std::vector<internal::PTy> tmp_b(8 * num, 0);
     vole_receiver_R->rrecv(absl::MakeSpan(tmp_a), absl::MakeSpan(tmp_b));
 
     auto bR = MulHelperSet(conn, absl::MakeSpan(b),
@@ -591,15 +622,15 @@ std::vector<size_t> TrueCorrelation::DoubleASTSet(
                            absl::MakeSpan(tmp_b).subspan(0, 2 * num));
 
     auto bbR = MulHelperSet(conn, absl::MakeSpan(bb),
-                            absl::MakeSpan(tmp_a).subspan(0, 2 * num),
-                            absl::MakeSpan(tmp_b).subspan(0, 2 * num));
+                            absl::MakeSpan(tmp_a).subspan(2 * num, 2 * num),
+                            absl::MakeSpan(tmp_b).subspan(2 * num, 2 * num));
 
     auto vole_receiver_T =
         std::make_shared<vole::SilentVoleAdapter>(conn, ot_receiver_);
     vole_receiver_T->OneTimeSetup();
 
-    std::vector<internal::PTy> _tmp_a(4 * num, 0);
-    std::vector<internal::PTy> _tmp_b(4 * num, 0);
+    std::vector<internal::PTy> _tmp_a(8 * num, 0);
+    std::vector<internal::PTy> _tmp_b(8 * num, 0);
     vole_receiver_T->rrecv(absl::MakeSpan(_tmp_a), absl::MakeSpan(_tmp_b));
 
     std::vector<internal::ATy> _ab(2 * num);
@@ -607,16 +638,19 @@ std::vector<size_t> TrueCorrelation::DoubleASTSet(
     std::copy(_a.begin(), _a.end(), _ab.begin());
     std::copy(_b.begin(), _b.end(), _ab.begin() + num);
 
-    auto _abT = MulHelperSet(conn, absl::MakeSpan(_ab), absl::MakeSpan(_tmp_a),
-                             absl::MakeSpan(_tmp_b));
+    auto _abT = MulHelperSet(conn, absl::MakeSpan(_ab),
+                             absl::MakeSpan(_tmp_a).subspan(0, 4 * num),
+                             absl::MakeSpan(_tmp_b).subspan(0, 4 * num));
 
     std::vector<internal::ATy> _aabb(2 * num);
 
     std::copy(_aa.begin(), _aa.end(), _aabb.begin());
     std::copy(_bb.begin(), _bb.end(), _aabb.begin() + num);
 
-    auto _aabbT = MulHelperSet(conn, absl::MakeSpan(_aabb),
-                               absl::MakeSpan(_tmp_a), absl::MakeSpan(_tmp_b));
+    auto _aabbT =
+        MulHelperSet(conn, absl::MakeSpan(_aabb),
+                     absl::MakeSpan(_tmp_a).subspan(4 * num, 4 * num),
+                     absl::MakeSpan(_tmp_b).subspan(4 * num, 4 * num));
 
     internal::op::SubInplace(
         absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()), num * 2),
@@ -684,8 +718,8 @@ std::vector<size_t> TrueCorrelation::DoubleASTSet(
 
     auto shuffled_bR =
         MulHelperSet(conn, absl::MakeSpan(_b),
-                     absl::MakeSpan(tmp_a).subspan(2 * num, 2 * num),
-                     absl::MakeSpan(tmp_b).subspan(2 * num, 2 * num));
+                     absl::MakeSpan(tmp_a).subspan(4 * num, 2 * num),
+                     absl::MakeSpan(tmp_b).subspan(4 * num, 2 * num));
 
     auto shuffle_bbR = internal::op::Add(
         absl::MakeSpan(
@@ -695,8 +729,8 @@ std::vector<size_t> TrueCorrelation::DoubleASTSet(
 
     auto shuffled_bbR =
         MulHelperSet(conn, absl::MakeSpan(_bb),
-                     absl::MakeSpan(tmp_a).subspan(2 * num, 2 * num),
-                     absl::MakeSpan(tmp_b).subspan(2 * num, 2 * num));
+                     absl::MakeSpan(tmp_a).subspan(6 * num, 2 * num),
+                     absl::MakeSpan(tmp_b).subspan(6 * num, 2 * num));
 
     auto check = internal::op::Sub(
         absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffled_bR.data()),
@@ -743,32 +777,57 @@ void TrueCorrelation::DoubleASTGet(
   YACL_ENFORCE(aa.size() == num);
   YACL_ENFORCE(bb.size() == num);
 
-  std::vector<internal::ATy> r(num);
-  RandomAuth(absl::MakeSpan(r));
+  // std::vector<internal::ATy> r(num);
+  // RandomAuth(absl::MakeSpan(r));
 
-  std::vector<internal::ATy> rr(num);
-  RandomAuth(absl::MakeSpan(rr));
+  // std::vector<internal::ATy> rr(num);
+  // RandomAuth(absl::MakeSpan(rr));
 
-  ot::OtHelper(ot_sender_, ot_receiver_)
-      .DoubleASTRecv(conn, r, a, b, rr, aa, bb);
+  // ot::OtHelper(ot_sender_, ot_receiver_)
+  //     .DoubleASTRecv(conn, r, a, b, rr, aa, bb);
 
   const size_t B = 5;
 
+  std::vector<std::vector<internal::ATy>> a_vec;
+  std::vector<std::vector<internal::ATy>> b_vec;
+  std::vector<std::vector<internal::ATy>> aa_vec;
+  std::vector<std::vector<internal::ATy>> bb_vec;
+
+  std::vector<internal::ATy> r_vec(num * B);
+  std::vector<internal::ATy> rr_vec(num * B);
+
+  RandomAuth(absl::MakeSpan(r_vec));
+  RandomAuth(absl::MakeSpan(rr_vec));
+
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .BatchDoubleASTRecv(conn, B, num, r_vec, a_vec, b_vec, rr_vec, aa_vec,
+                          bb_vec);
+
+  std::copy(a_vec[0].begin(), a_vec[0].end(), a.begin());
+  std::copy(b_vec[0].begin(), b_vec[0].end(), b.begin());
+
+  std::copy(aa_vec[0].begin(), aa_vec[0].end(), aa.begin());
+  std::copy(bb_vec[0].begin(), bb_vec[0].end(), bb.begin());
+
   for (size_t i = 1; i < B; ++i) {
-    std::vector<internal::ATy> _a(num, {0, 0});
-    std::vector<internal::ATy> _aa(num, {0, 0});
-    std::vector<internal::ATy> _b(num, {0, 0});
-    std::vector<internal::ATy> _bb(num, {0, 0});
+    // std::vector<internal::ATy> _a(num, {0, 0});
+    // std::vector<internal::ATy> _aa(num, {0, 0});
+    // std::vector<internal::ATy> _b(num, {0, 0});
+    // std::vector<internal::ATy> _bb(num, {0, 0});
 
-    std::vector<internal::ATy> _r(num);
-    RandomAuth(absl::MakeSpan(_r));
+    // std::vector<internal::ATy> _r(num);
+    // RandomAuth(absl::MakeSpan(_r));
 
-    std::vector<internal::ATy> _rr(num);
-    RandomAuth(absl::MakeSpan(_rr));
+    // std::vector<internal::ATy> _rr(num);
+    // RandomAuth(absl::MakeSpan(_rr));
 
-    ot::OtHelper(ot_sender_, ot_receiver_)
-        .DoubleASTRecv(conn, _r, absl::MakeSpan(_a), absl::MakeSpan(_b), _rr,
-                       absl::MakeSpan(_aa), absl::MakeSpan(_bb));
+    // ot::OtHelper(ot_sender_, ot_receiver_)
+    //     .DoubleASTRecv(conn, _r, absl::MakeSpan(_a), absl::MakeSpan(_b), _rr,
+    //                    absl::MakeSpan(_aa), absl::MakeSpan(_bb));
+    auto _a = a_vec[i];
+    auto _b = b_vec[i];
+    auto _aa = aa_vec[i];
+    auto _bb = bb_vec[i];
 
     // shuffle b and bb with (_a,_b) and (_aa,_bb)
     // 1. compute b * R
@@ -782,20 +841,20 @@ void TrueCorrelation::DoubleASTGet(
         std::make_shared<vole::SilentVoleAdapter>(conn, ot_sender_, R);
     vole_sender_R->OneTimeSetup();
 
-    std::vector<internal::PTy> tmp_c(4 * num, 0);
+    std::vector<internal::PTy> tmp_c(8 * num, 0);
     vole_sender_R->rsend(absl::MakeSpan(tmp_c));
 
     auto bR = MulHelperGet(conn, R, absl::MakeSpan(b),
                            absl::MakeSpan(tmp_c).subspan(0, 2 * num));
 
     auto bbR = MulHelperGet(conn, R, absl::MakeSpan(bb),
-                            absl::MakeSpan(tmp_c).subspan(0, 2 * num));
+                            absl::MakeSpan(tmp_c).subspan(2 * num, 2 * num));
 
     auto vole_sender_T =
         std::make_shared<vole::SilentVoleAdapter>(conn, ot_sender_, T);
     vole_sender_T->OneTimeSetup();
 
-    std::vector<internal::PTy> _tmp_c(4 * num, 0);
+    std::vector<internal::PTy> _tmp_c(8 * num, 0);
     vole_sender_T->rsend(absl::MakeSpan(_tmp_c));
 
     std::vector<internal::ATy> _ab(2 * num);
@@ -803,8 +862,8 @@ void TrueCorrelation::DoubleASTGet(
     std::copy(_a.begin(), _a.end(), _ab.begin());
     std::copy(_b.begin(), _b.end(), _ab.begin() + num);
 
-    auto _abT =
-        MulHelperGet(conn, T, absl::MakeSpan(_ab), absl::MakeSpan(_tmp_c));
+    auto _abT = MulHelperGet(conn, T, absl::MakeSpan(_ab),
+                             absl::MakeSpan(_tmp_c).subspan(0, 4 * num));
 
     std::vector<internal::ATy> _aabb(2 * num);
 
@@ -812,7 +871,8 @@ void TrueCorrelation::DoubleASTGet(
     std::copy(_bb.begin(), _bb.end(), _aabb.begin() + num);
 
     auto _aabbT =
-        MulHelperGet(conn, T, absl::MakeSpan(_aabb), absl::MakeSpan(_tmp_c));
+        MulHelperGet(conn, T, absl::MakeSpan(_aabb),
+                     absl::MakeSpan(_tmp_c).subspan(4 * num, 4 * num));
 
     internal::op::SubInplace(
         absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()), num * 2),
@@ -865,7 +925,7 @@ void TrueCorrelation::DoubleASTGet(
 
     auto shuffled_bR =
         MulHelperGet(conn, R, absl::MakeSpan(_b),
-                     absl::MakeSpan(tmp_c).subspan(2 * num, 2 * num));
+                     absl::MakeSpan(tmp_c).subspan(4 * num, 2 * num));
 
     auto shuffle_bbR = internal::op::Add(
         absl::MakeSpan(
@@ -875,7 +935,7 @@ void TrueCorrelation::DoubleASTGet(
 
     auto shuffled_bbR =
         MulHelperGet(conn, R, absl::MakeSpan(_bb),
-                     absl::MakeSpan(tmp_c).subspan(2 * num, 2 * num));
+                     absl::MakeSpan(tmp_c).subspan(6 * num, 2 * num));
 
     auto check = internal::op::Sub(
         absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_bR.data()),

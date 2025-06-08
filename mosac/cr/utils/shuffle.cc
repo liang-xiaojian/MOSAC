@@ -2014,4 +2014,414 @@ void DoubleASTRecv(std::shared_ptr<Connection>& conn,
   YACL_ENFORCE(flag == true);
 }
 
+std::pair<std::vector<uint128_t>, std::vector<uint128_t>>
+_DoubleASTSend_internal(
+    yc::OtRecvStore& ot_store, absl::Span<const size_t> perm,
+    absl::Span<const internal::ATy> r, absl::Span<internal::ATy> lhs,
+    absl::Span<internal::ATy> rhs,
+    /* double AST */
+    absl::Span<const internal::ATy> rr, absl::Span<internal::ATy> llhs,
+    absl::Span<internal::ATy> rrhs, absl::Span<uint128_t> recv_msgs,
+    absl::Span<internal::PTy> recorret_msgs) {
+  const size_t num = perm.size();
+  const size_t ot_num = ym::Log2Ceil(num);
+  const size_t required_ot = num * ot_num;
+  const size_t repeat = 4;
+  const size_t full_size = num * repeat;
+
+  YACL_ENFORCE(r.size() == num);
+  YACL_ENFORCE(lhs.size() == num);
+  YACL_ENFORCE(rhs.size() == num);
+  YACL_ENFORCE(rr.size() == num);
+  YACL_ENFORCE(llhs.size() == num);
+  YACL_ENFORCE(rrhs.size() == num);
+
+  YACL_ENFORCE(ot_store.Size() == required_ot);
+  YACL_ENFORCE(recv_msgs.size() == required_ot);
+  YACL_ENFORCE(recorret_msgs.size() == num * repeat);
+
+  YACL_ENFORCE(repeat < kPrfKey.size());
+
+  auto [r_val, r_mac] = internal::Unpack(r);
+  auto [rr_val, rr_mac] = internal::Unpack(rr);
+
+  std::vector<internal::PTy> a(full_size, internal::PTy(0));
+  std::vector<internal::PTy> b(full_size, internal::PTy(0));
+  // gywz ote buff
+  std::vector<internal::PTy> opv(full_size);
+  std::vector<uint128_t> punctured_msgs(num);
+  // for consistency check
+  std::vector<uint128_t> check_a(num, 0);
+  std::vector<uint128_t> check_b(num, 0);
+
+  for (size_t i = 0; i < num; ++i) {
+    auto ot_recv = ot_store.NextSlice(ot_num);
+    auto sub_msgs = recv_msgs.subspan(i * ot_num, ot_num);
+    yc::GywzOtExtRecv_fixed_index(ot_recv, num, absl::MakeSpan(punctured_msgs),
+                                  sub_msgs);
+    // break correlation
+    auto extend = SeedExtend(absl::MakeSpan(punctured_msgs), repeat + 1);
+    // set punctured point to be zero
+    for (size_t _ = 0; _ < repeat; ++_) {
+      extend[_ * num + perm[i]] = 0;
+    }
+
+    std::transform(extend.cbegin(), extend.cbegin() + full_size, opv.begin(),
+                   [](const uint128_t& val) { return internal::PTy(val); });
+
+    // ---- consistency check ----
+    std::transform(extend.cbegin() + full_size, extend.cend(), check_a.begin(),
+                   check_a.begin(), std::bit_xor<uint128_t>());
+    check_b[i] = std::reduce(extend.cbegin() + full_size, extend.cend(),
+                             uint128_t(0), std::bit_xor<uint128_t>());
+    // ---- consistency check ----
+
+    internal::op::AddInplace(absl::MakeSpan(a), absl::MakeConstSpan(opv));
+    for (size_t _ = 0; _ < repeat; ++_) {
+      const size_t offset = _ * num;
+      b[offset + i] =
+          std::reduce(opv.begin() + offset, opv.begin() + offset + num,
+                      internal::PTy(0), internal::PTy::Add);
+    }
+  }
+
+  // auto recv_buff = conn->Recv(conn->NextRank(), "shuffle: r_sub_b");
+  // YACL_ENFORCE(recv_buff.size() ==
+  //              static_cast<int>(full_size * sizeof(internal::PTy)));
+  // auto r_sub_b = absl::MakeSpan(recv_buff.data<internal::PTy>(), full_size);
+  auto r_sub_b = recorret_msgs;
+
+  internal::op::AddInplace(r_sub_b.subspan(0, num), absl::MakeConstSpan(r_val));
+  internal::op::AddInplace(r_sub_b.subspan(num, num),
+                           absl::MakeConstSpan(r_mac));
+  internal::op::AddInplace(r_sub_b.subspan(2 * num, num),
+                           absl::MakeConstSpan(rr_val));
+  internal::op::AddInplace(r_sub_b.subspan(3 * num, num),
+                           absl::MakeConstSpan(rr_mac));
+
+  for (size_t i = 0; i < num; ++i) {
+    a[perm[i]] = r_sub_b[i] + b[i] - a[perm[i]];
+    a[perm[i] + num] = r_sub_b[i + num] + b[i + num] - a[perm[i] + num];
+    a[perm[i] + 2 * num] =
+        r_sub_b[i + 2 * num] + b[i + 2 * num] - a[perm[i] + 2 * num];
+    a[perm[i] + 3 * num] =
+        r_sub_b[i + 3 * num] + b[i + 3 * num] - a[perm[i] + 3 * num];
+  }
+
+  internal::Pack(absl::MakeConstSpan(r_sub_b).subspan(0, num),
+                 absl::MakeConstSpan(r_sub_b).subspan(num, num), lhs);
+  internal::Pack(absl::MakeConstSpan(a).subspan(0, num),
+                 absl::MakeConstSpan(a).subspan(num, num), rhs);
+  internal::Pack(absl::MakeConstSpan(r_sub_b).subspan(2 * num, num),
+                 absl::MakeConstSpan(r_sub_b).subspan(3 * num, num), llhs);
+  internal::Pack(absl::MakeConstSpan(a).subspan(2 * num, num),
+                 absl::MakeConstSpan(a).subspan(3 * num, num), rrhs);
+
+  return std::make_pair(std::move(check_a), std::move(check_b));
+}
+
+std::pair<std::vector<uint128_t>, std::vector<uint128_t>>
+_DoubleASTRecv_internal(
+    yc::OtSendStore& ot_store, absl::Span<const internal::ATy> r,
+    absl::Span<internal::ATy> lhs, absl::Span<internal::ATy> rhs,
+    /* double AST */
+    absl::Span<const internal::ATy> rr, absl::Span<internal::ATy> llhs,
+    absl::Span<internal::ATy> rrhs, absl::Span<uint128_t> send_msgs,
+    absl::Span<internal::PTy> recorret_msgs) {
+  const size_t num = r.size();
+  const size_t ot_num = ym::Log2Ceil(num);
+  const size_t required_ot = num * ot_num;
+  const size_t repeat = 4;
+  const size_t full_size = num * repeat;
+
+  YACL_ENFORCE(lhs.size() == num);
+  YACL_ENFORCE(rhs.size() == num);
+  YACL_ENFORCE(llhs.size() == num);
+  YACL_ENFORCE(rrhs.size() == num);
+  YACL_ENFORCE(rr.size() == num);
+
+  YACL_ENFORCE(ot_store.Size() == required_ot);
+  YACL_ENFORCE(send_msgs.size() == required_ot);
+  YACL_ENFORCE(recorret_msgs.size() == num * repeat);
+
+  YACL_ENFORCE(repeat < kPrfKey.size());
+
+  auto [r_val, r_mac] = internal::Unpack(r);
+  auto [rr_val, rr_mac] = internal::Unpack(rr);
+
+  std::vector<internal::PTy> a(full_size, internal::PTy(0));
+  std::vector<internal::PTy> b(full_size, internal::PTy(0));
+  std::vector<internal::PTy> opv(full_size);
+  std::vector<uint128_t> all_msgs(num);
+  // for consistency check
+  std::vector<uint128_t> check_a(num, 0);
+  std::vector<uint128_t> check_b(num, 0);
+
+  std::vector<uint128_t> ot_buff(required_ot);
+
+  for (size_t i = 0; i < num; ++i) {
+    auto ot_send = ot_store.NextSlice(ot_num);
+    auto sub_msgs = send_msgs.subspan(i * ot_num, ot_num);
+    yc::GywzOtExtSend_fixed_index(ot_send, num, absl::MakeSpan(all_msgs),
+                                  sub_msgs);
+    // break correlation
+    auto extend = SeedExtend(absl::MakeSpan(all_msgs), repeat + 1);
+
+    std::transform(extend.cbegin(), extend.cbegin() + full_size, opv.begin(),
+                   [](const uint128_t& val) { return internal::PTy(val); });
+
+    // ---- consistency check ----
+    std::transform(extend.cbegin() + full_size, extend.cend(), check_a.begin(),
+                   check_a.begin(), std::bit_xor<uint128_t>());
+    check_b[i] = std::reduce(extend.cbegin() + full_size, extend.cend(),
+                             uint128_t(0), std::bit_xor<uint128_t>());
+    // ---- consistency check ----
+
+    internal::op::AddInplace(absl::MakeSpan(a), absl::MakeConstSpan(opv));
+    for (size_t _ = 0; _ < repeat; ++_) {
+      const size_t offset = _ * num;
+      b[offset + i] =
+          std::reduce(opv.begin() + offset, opv.begin() + offset + num,
+                      internal::PTy(0), internal::PTy::Add);
+    }
+  }
+
+  // std::vector<internal::PTy> r_sub_b(full_size, internal::PTy(0));
+  auto& r_sub_b = recorret_msgs;
+  std::fill(r_sub_b.begin(), r_sub_b.end(), internal::PTy(0));
+
+  internal::op::Sub(absl::MakeConstSpan(r_val),
+                    absl::MakeConstSpan(b).subspan(0, num),
+                    absl::MakeSpan(r_sub_b).subspan(0, num));
+  internal::op::Sub(absl::MakeConstSpan(r_mac),
+                    absl::MakeConstSpan(b).subspan(num, num),
+                    absl::MakeSpan(r_sub_b).subspan(num, num));
+  internal::op::Sub(absl::MakeConstSpan(rr_val),
+                    absl::MakeConstSpan(b).subspan(2 * num, num),
+                    absl::MakeSpan(r_sub_b).subspan(2 * num, num));
+  internal::op::Sub(absl::MakeConstSpan(rr_mac),
+                    absl::MakeConstSpan(b).subspan(3 * num, num),
+                    absl::MakeSpan(r_sub_b).subspan(3 * num, num));
+  // conn->SendAsync(conn->NextRank(),
+  //                 yacl::ByteContainerView(
+  //                     r_sub_b.data(), r_sub_b.size() *
+  //                     sizeof(internal::PTy)),
+  //                 "shuffle: r_sub_b");
+
+  internal::Pack(absl::MakeConstSpan(b).subspan(0, num),
+                 absl::MakeConstSpan(b).subspan(num, num), absl::MakeSpan(lhs));
+  internal::Pack(absl::MakeConstSpan(a).subspan(0, num),
+                 absl::MakeConstSpan(a).subspan(num, num), absl::MakeSpan(rhs));
+
+  internal::Pack(absl::MakeConstSpan(b).subspan(2 * num, num),
+                 absl::MakeConstSpan(b).subspan(3 * num, num),
+                 absl::MakeSpan(llhs));
+  internal::Pack(absl::MakeConstSpan(a).subspan(2 * num, num),
+                 absl::MakeConstSpan(a).subspan(3 * num, num),
+                 absl::MakeSpan(rrhs));
+
+  return std::make_pair(std::move(check_a), std::move(check_b));
+}
+
+void BatchDoubleASTSend(std::shared_ptr<Connection>& conn,
+                        std::shared_ptr<ot::OtAdapter>& ot_ptr,
+                        size_t total_num, size_t per_size,
+                        const std::vector<std::vector<size_t>>& perms,
+                        absl::Span<const internal::ATy> r,
+                        std::vector<std::vector<internal::ATy>>& lhs,
+                        std::vector<std::vector<internal::ATy>>& rhs,
+                        /* double AST */
+                        absl::Span<const internal::ATy> rr,
+                        std::vector<std::vector<internal::ATy>>& llhs,
+                        std::vector<std::vector<internal::ATy>>& rrhs) {
+  SPDLOG_INFO("Enter Batch DoubleAST Send");
+  lhs.clear();
+  rhs.clear();
+  llhs.clear();
+  rrhs.clear();
+
+  YACL_ENFORCE(perms.size() == total_num);
+  YACL_ENFORCE(perms[0].size() == per_size);
+  YACL_ENFORCE(r.size() == total_num * per_size);
+
+  yacl::dynamic_bitset<uint128_t> choices;
+
+  const auto ot_num = ym::Log2Ceil(per_size);
+  const auto required_ot = per_size * ot_num;
+  for (size_t i = 0; i < total_num; ++i) {
+    auto& perm = perms[i];
+    for (size_t j = 0; j < per_size; ++j) {
+      yacl::dynamic_bitset<uint128_t> tmp_choices;
+      tmp_choices.append(perm[j]);
+      tmp_choices.resize(ot_num);
+      choices.append(tmp_choices);
+    }
+  }
+
+  YACL_ENFORCE(choices.size() == total_num * required_ot);
+
+  std::vector<uint128_t> ot_buff(required_ot * total_num);
+  ot_ptr->recv_cot(absl::MakeSpan(ot_buff), choices);
+  auto ot_store = yc::MakeOtRecvStore(choices, ot_buff);
+
+  yacl::Buffer recv_buf;
+  std::vector<std::vector<uint128_t>> check_vec_a;
+  std::vector<std::vector<uint128_t>> check_vec_b;
+
+  uint32_t delay_round = ym::DivCeil(param::kBatchAST, required_ot);
+  SPDLOG_INFO("magic delay round {}", delay_round);
+  uint64_t delay_message_size =
+      delay_round *
+      (required_ot * sizeof(uint128_t) + sizeof(internal::PTy) * per_size * 4);
+  absl::Span<uint128_t> delay_recv_msgs;
+  absl::Span<internal::PTy> delay_recorrect_msgs;
+
+  for (size_t i = 0; i < total_num; ++i) {
+    auto& perm = perms[i];
+    std::vector<internal::ATy> tmp_lhs(per_size);
+    std::vector<internal::ATy> tmp_rhs(per_size);
+
+    std::vector<internal::ATy> tmp_llhs(per_size);
+    std::vector<internal::ATy> tmp_rrhs(per_size);
+
+    auto sub_r = r.subspan(i * per_size, per_size);
+    auto sub_rr = rr.subspan(i * per_size, per_size);
+
+    auto ot_sub_store = ot_store.NextSlice(required_ot);
+
+    if (i % delay_round == 0) {
+      recv_buf = conn->Recv(conn->NextRank(), "BatchAST");
+      YACL_ENFORCE((uint64_t)recv_buf.size() == (uint64_t)delay_message_size);
+      delay_recv_msgs =
+          absl::MakeSpan(recv_buf.data<uint128_t>(), delay_round * required_ot);
+      delay_recorrect_msgs = absl::MakeSpan(
+          reinterpret_cast<internal::PTy*>(recv_buf.data<uint128_t>() +
+                                           delay_round * required_ot),
+          delay_round * per_size * 4);
+    }
+
+    // auto buf_msgs = conn->Recv(conn->NextRank(), "BatchAST");
+    // YACL_ENFORCE((uint64_t)buf_msgs.size() ==
+    //              (sizeof(uint128_t) * required_ot +
+    //               sizeof(internal::PTy) * per_size * 4));
+
+    auto recv_msgs =
+        delay_recv_msgs.subspan((i % delay_round) * required_ot, required_ot);
+    auto recorret_msgs = delay_recorrect_msgs.subspan(
+        (i % delay_round) * (per_size * 4), per_size * 4);
+
+    // auto recv_msgs = absl::MakeSpan(
+    //     reinterpret_cast<uint128_t*>(buf_msgs.data()), required_ot);
+    // auto recorret_msgs = absl::MakeSpan(
+    //     reinterpret_cast<internal::PTy*>(buf_msgs.data<uint8_t>() +
+    //                                      sizeof(uint128_t) * required_ot),
+    //     per_size * 4);
+
+    auto [check_a, check_b] = _DoubleASTSend_internal(
+        ot_sub_store, perm, sub_r, absl::MakeSpan(tmp_lhs),
+        absl::MakeSpan(tmp_rhs), sub_rr, absl::MakeSpan(tmp_llhs),
+        absl::MakeSpan(tmp_rrhs), recv_msgs, recorret_msgs);
+
+    lhs.push_back(std::move(tmp_lhs));
+    rhs.push_back(std::move(tmp_rhs));
+    llhs.push_back(std::move(tmp_llhs));
+    rrhs.push_back(std::move(tmp_rrhs));
+    check_vec_a.push_back(std::move(check_a));
+    check_vec_b.push_back(std::move(check_b));
+  }
+  auto flag = BatchASTSend_check(conn, perms, check_vec_a, check_vec_b);
+  YACL_ENFORCE(flag == true);
+}
+
+void BatchDoubleASTRecv(std::shared_ptr<Connection> conn,
+                        std::shared_ptr<ot::OtAdapter>& ot_ptr,
+                        size_t total_num, size_t per_size,
+                        absl::Span<const internal::ATy> r,
+                        std::vector<std::vector<internal::ATy>>& lhs,
+                        std::vector<std::vector<internal::ATy>>& rhs,
+                        /* double AST */
+                        absl::Span<const internal::ATy> rr,
+                        std::vector<std::vector<internal::ATy>>& llhs,
+                        std::vector<std::vector<internal::ATy>>& rrhs) {
+  SPDLOG_INFO("Enter Batch DoubleAST Recv");
+  lhs.clear();
+  rhs.clear();
+  llhs.clear();
+  rrhs.clear();
+
+  YACL_ENFORCE(r.size() == total_num * per_size);
+
+  const auto required_ot = per_size * ym::Log2Ceil(per_size);
+
+  std::vector<uint128_t> ot_buff(required_ot * total_num);
+  ot_ptr->send_cot(absl::MakeSpan(ot_buff));
+  auto ot_store = yc::MakeCompactOtSendStore(ot_buff, ot_ptr->GetDelta());
+
+  std::vector<std::vector<uint128_t>> check_vec_a;
+  std::vector<std::vector<uint128_t>> check_vec_b;
+
+  yacl::Buffer buf_msgs(sizeof(uint128_t) * required_ot +
+                        sizeof(internal::PTy) * per_size * 4);
+
+  uint32_t delay_round = ym::DivCeil(param::kBatchAST, required_ot);
+  // SPDLOG_INFO("magic delay round {}", delay_round);
+  uint64_t delay_message_size =
+      delay_round *
+      (required_ot * sizeof(uint128_t) + per_size * 4 * sizeof(internal::PTy));
+
+  yacl::Buffer delay_msgs(delay_message_size);
+  memset(delay_msgs.data<uint8_t>(), 0, delay_message_size);
+
+  auto delay_send_msgs =
+      absl::MakeSpan(delay_msgs.data<uint128_t>(), delay_round * required_ot);
+  auto delay_recorrect_msgs = absl::MakeSpan(
+      reinterpret_cast<internal::PTy*>(delay_msgs.data<uint128_t>() +
+                                       delay_round * required_ot),
+      delay_round * per_size * 4);
+
+  for (size_t i = 0; i < total_num; ++i) {
+    std::vector<internal::ATy> tmp_lhs(per_size);
+    std::vector<internal::ATy> tmp_rhs(per_size);
+    std::vector<internal::ATy> tmp_llhs(per_size);
+    std::vector<internal::ATy> tmp_rrhs(per_size);
+
+    auto ot_sub_store = ot_store.NextSlice(required_ot);
+    auto sub_r = r.subspan(i * per_size, per_size);
+    auto sub_rr = rr.subspan(i * per_size, per_size);
+
+    auto send_msgs =
+        delay_send_msgs.subspan((i % delay_round) * required_ot, required_ot);
+    auto recorret_msgs = delay_recorrect_msgs.subspan(
+        (i % delay_round) * per_size * 4, per_size * 4);
+
+    auto [check_a, check_b] = _DoubleASTRecv_internal(
+        ot_sub_store, sub_r, absl::MakeSpan(tmp_lhs), absl::MakeSpan(tmp_rhs),
+        sub_rr, absl::MakeSpan(tmp_llhs), absl::MakeSpan(tmp_rrhs), send_msgs,
+        recorret_msgs);
+
+    // conn->SendAsync(conn->NextRank(), buf_msgs, "BatchAST");
+    if ((i + 1) % delay_round == 0) {
+      conn->SendAsync(conn->NextRank(), yacl::ByteContainerView(delay_msgs),
+                      "BatchAST");
+      memset(delay_msgs.data<uint8_t>(), 0, delay_message_size);
+    }
+
+    lhs.push_back(std::move(tmp_lhs));
+    rhs.push_back(std::move(tmp_rhs));
+    llhs.push_back(std::move(tmp_llhs));
+    rrhs.push_back(std::move(tmp_rrhs));
+
+    check_vec_a.push_back(std::move(check_a));
+    check_vec_b.push_back(std::move(check_b));
+  }
+
+  if (total_num % delay_round != 0) {
+    conn->SendAsync(conn->NextRank(), yacl::ByteContainerView(delay_msgs),
+                    "BatchAST");
+  }
+
+  auto flag = BatchASTRecv_check(conn, check_vec_a, check_vec_b);
+  YACL_ENFORCE(flag == true);
+}
+
 }  // namespace mosac::shuffle
