@@ -310,6 +310,30 @@ ASTGTy Correlation::ASTGet_2k(size_t T, size_t num) {
   return ASTGTy(std::move(a), std::move(b));
 }
 
+DASTSTy Correlation::DoubleASTSet_2k(size_t T, size_t num) {
+  std::vector<internal::ATy> a(num);
+  std::vector<internal::ATy> b(num);
+  std::vector<internal::ATy> aa(num);
+  std::vector<internal::ATy> bb(num);
+  std::vector<size_t> perm =
+      DoubleASTSet_2k(T, absl::MakeSpan(a), absl::MakeSpan(b),
+                      absl::MakeSpan(aa), absl::MakeSpan(bb));
+  YACL_ENFORCE(DelayCheck());
+  return DASTSTy(std::move(perm), std::move(a), std::move(b), std::move(aa),
+                 std::move(bb));
+}
+
+DASTGTy Correlation::DoubleASTGet_2k(size_t T, size_t num) {
+  std::vector<internal::ATy> a(num);
+  std::vector<internal::ATy> b(num);
+  std::vector<internal::ATy> aa(num);
+  std::vector<internal::ATy> bb(num);
+  DoubleASTGet_2k(T, absl::MakeSpan(a), absl::MakeSpan(b), absl::MakeSpan(aa),
+                  absl::MakeSpan(bb));
+  YACL_ENFORCE(DelayCheck());
+  return DASTGTy(std::move(a), std::move(b), std::move(aa), std::move(bb));
+}
+
 NMulTy Correlation::NMul(size_t num) {
   if (cache_ != nullptr && cache_->NMulCount(num)) {
     return cache_->NMul(num);

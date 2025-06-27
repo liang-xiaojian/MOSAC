@@ -270,6 +270,17 @@ class Correlation : public State {
   virtual void ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
                          absl::Span<internal::ATy> b) = 0;
 
+  // solve the case for 2^k (offline benchmark currently)
+  virtual std::vector<size_t> DoubleASTSet_2k(size_t T,
+                                              absl::Span<internal::ATy> a,
+                                              absl::Span<internal::ATy> b,
+                                              absl::Span<internal::ATy> aa,
+                                              absl::Span<internal::ATy> bb) = 0;
+  virtual void DoubleASTGet_2k(size_t T, absl::Span<internal::ATy> a,
+                               absl::Span<internal::ATy> b,
+                               absl::Span<internal::ATy> aa,
+                               absl::Span<internal::ATy> bb) = 0;
+
   virtual bool DelayCheck() = 0;
 
   // interface
@@ -303,6 +314,10 @@ class Correlation : public State {
   // solve the case for 2^k (offline benchmark currently)
   ASTSTy ASTSet_2k(size_t T, size_t num);
   ASTGTy ASTGet_2k(size_t T, size_t num);
+
+  // solve the case for 2^k (offline benchmark currently)
+  DASTSTy DoubleASTSet_2k(size_t T, size_t num);
+  DASTGTy DoubleASTGet_2k(size_t T, size_t num);
 
   // Print
   void cache_print();
