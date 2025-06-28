@@ -557,8 +557,8 @@ void OtHelper::BaseVoleSend(std::shared_ptr<Connection>& conn,
   auto buf = conn->Recv(conn->NextRank(), "MalBaseVole");
   auto extra_ab =
       absl::MakeSpan(reinterpret_cast<internal::PTy*>(buf.data()), 2);
-  SPDLOG_INFO("{} v.s. {}", (extra_ab[0] * delta + extra_ab[1]).GetVal(),
-              extra_c.GetVal());
+  // SPDLOG_INFO("{} v.s. {}", (extra_ab[0] * delta + extra_ab[1]).GetVal(),
+  //             extra_c.GetVal());
   YACL_ENFORCE(extra_ab[0] * delta + extra_ab[1] == extra_c);
   // ---- consistency check ----
 }

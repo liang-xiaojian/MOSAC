@@ -30,66 +30,59 @@ llvm::cl::opt<uint32_t> cl_CR(
     llvm::cl::desc("0 for prg-based correlated randomness, 1 for real "
                    "correlated randomness"));
 
-llvm::cl::opt<uint32_t> cl_cache(
-    "cache", llvm::cl::init(1),
-    llvm::cl::desc(
-        "0 for no cache, 1 for cache (pre-compute offline randomness)"));
+llvm::cl::opt<uint32_t> cl_small("small_power", llvm::cl::init(3),
+                                 llvm::cl::desc("T=2^small_power"));
 
-llvm::cl::opt<uint32_t> cl_num("num", llvm::cl::init(128),
-                               llvm::cl::desc("size of shuffle elements"));
+llvm::cl::opt<uint32_t> cl_big("big_power", llvm::cl::init(4),
+                               llvm::cl::desc("num=2^big_power"));
 
-auto OSS(const std::shared_ptr<yacl::link::Context> &lctx, size_t num,
-         bool CR_mode, bool cache) {
+auto AST2k(const std::shared_ptr<yacl::link::Context> &lctx, size_t T,
+           size_t num, bool CR_mode) {
   auto rank = lctx->Rank();
 
-  SPDLOG_INFO("[P{}] num {}, working mode: {} && {} ", rank, num,
+  SPDLOG_INFO("[P{}] T {} && num {}, working mode: {} ", rank, T, num,
               (CR_mode ? std::string("Real Correlated Randomness")
-                       : std::string("Fake Correlated Randomness")),
-              (cache ? std::string("Cache") : std::string("No Cache")));
+                       : std::string("Fake Correlated Randomness")));
 
   auto context = std::make_shared<Context>(lctx);
   SetupContext(context, CR_mode /* fake CR model or real CR model */);
-  auto prot = context->GetState<Protocol>();
 
-  // cache offline randomness
-  if (cache) {
-    auto shares = prot->RandA(num, true);
-    auto shuffle = prot->OptSShuffleA(shares, true);
-    auto result = prot->A2P(shuffle, true);
+  auto cr = context->GetState<Correlation>();
 
-    context->GetState<Correlation>()->force_cache();
-    context->GetState<Correlation>()->cache_print();
+  TIMER_N_COMM_START(DoubleAST2k_2_side);
+  if (rank == 0) {
+    TIMER_N_COMM_START(_DoubleAST2k);
+    [[maybe_unused]] auto [perm, a, b, aa, bb] = cr->DoubleASTSet_2k(T, num);
+    [[maybe_unused]] auto [remote_a, remote_b, remote_aa, remote_bb] =
+        cr->DoubleASTGet_2k(T, num);
+    TIMER_N_COMM_END_PRINT(_DoubleAST2k);
+  } else {
+    TIMER_N_COMM_START(_DoubleAST2k);
+    [[maybe_unused]] auto [remote_a, remote_b, remote_aa, remote_bb] =
+        cr->DoubleASTGet_2k(T, num);
+    [[maybe_unused]] auto [perm, a, b, aa, bb] = cr->DoubleASTSet_2k(T, num);
+    TIMER_N_COMM_END_PRINT(_DoubleAST2k);
   }
+  cr->DelayCheck();
+  TIMER_N_COMM_END_PRINT(DoubleAST2k_2_side);
 
-  // scheme with online
-  auto shares = prot->RandA(num);
-
-  TIMER_N_COMM_START(opt_OSS_online);
-  auto shuffle = prot->OptSShuffleA(shares);
-  YACL_ENFORCE(prot->DelayCheck());
-  TIMER_N_COMM_END_PRINT(opt_OSS_online);
-
-  auto result = prot->A2P(shuffle);
-  auto plaintext = prot->A2P(shares);
-
-  return std::make_pair(result, plaintext);
+  return true;
 }
 
 struct ArgPack {
+  uint32_t T;
   uint32_t num;
   uint32_t CR_mode;
-  uint32_t cache;
 
   bool operator==(const ArgPack &other) const {
-    return (num == other.num) && (CR_mode == other.CR_mode) &&
-           (cache == other.cache);
+    return (T == other.T) && (num == other.num) && (CR_mode == other.CR_mode);
   }
   bool operator!=(const ArgPack &other) const { return !(*this == other); }
 };
 
-bool SyncTask(const std::shared_ptr<yacl::link::Context> &lctx, uint32_t num,
-              uint32_t CR_mode, uint32_t cache) {
-  ArgPack tmp = {num, CR_mode, cache};
+bool SyncTask(const std::shared_ptr<yacl::link::Context> &lctx, uint32_t T,
+              uint32_t num, uint32_t CR_mode) {
+  ArgPack tmp = {T, num, CR_mode};
   auto bv = yacl::ByteContainerView(&tmp, sizeof(tmp));
 
   ArgPack remote;
@@ -119,6 +112,7 @@ std::shared_ptr<yacl::link::Context> MakeLink(const std::string &parties,
     lctx_desc.parties.emplace_back(id, hosts[rank]);
   }
   lctx_desc.throttle_window_size = 0;
+  lctx_desc.http_timeout_ms = 120 * 1000;  // 1 min
   auto lctx = yacl::link::FactoryBrpc().CreateContext(lctx_desc, rank);
   lctx->ConnectToMesh();
   return lctx;
@@ -131,34 +125,22 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
   bool alone = cl_alone.getValue();
-  uint32_t num = cl_num.getValue();
+  uint32_t small_power = cl_small.getValue();
+  uint32_t big_power = cl_big.getValue();
   bool CR_mode = cl_CR.getValue();
-  bool cache = cl_cache.getValue();
+
+  YACL_ENFORCE(0 < small_power && small_power <= big_power);
+  uint32_t T = 1 << small_power;
+  uint32_t num = 1 << big_power;
 
   // lambda
   auto run_party = [&](uint32_t rank) {
     auto lctx = MakeLink(cl_parties.getValue(), rank);
-    SyncTask(lctx, num, CR_mode, cache);
+    SyncTask(lctx, T, num, CR_mode);
 
     SPDLOG_INFO("PROTOCOL START");
-    auto [shuffle, plaintext] = OSS(lctx, num, CR_mode, cache);
+    AST2k(lctx, T, num, CR_mode);
     SPDLOG_INFO("PROTOCOL END");
-
-    typedef decltype(std::declval<internal::PTy>().GetVal()) INTEGER;
-
-    auto shuffle_span = absl::MakeSpan(
-        reinterpret_cast<INTEGER *>(shuffle.data()), shuffle.size());
-    auto plaintext_span = absl::MakeSpan(
-        reinterpret_cast<INTEGER *>(plaintext.data()), plaintext.size());
-
-    std::sort(shuffle_span.begin(), shuffle_span.end());
-    std::sort(plaintext_span.begin(), plaintext_span.end());
-
-    for (size_t i = 0; i < num; ++i) {
-      YACL_ENFORCE(shuffle_span[i] == plaintext_span[i]);
-    }
-
-    SPDLOG_INFO("Double Check Done");
   };
 
   if (alone == true) {

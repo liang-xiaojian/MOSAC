@@ -30,6 +30,7 @@ class TrueCorrelation : public Correlation {
 
   // delay check
   std::vector<internal::PTy> delay_check_buff_;
+  std::vector<std::array<uint8_t, 32>> double_ast_check_buff_;
   std::vector<std::vector<internal::PTy>> val_delay_check_buff_;
   std::vector<std::vector<internal::PTy>> mac_delay_check_buff_;
 

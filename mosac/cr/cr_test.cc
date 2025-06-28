@@ -313,7 +313,7 @@ TEST(CrTest, ASTWork) {
 
 TEST(CrTest, ASTWork_2k) {
   auto context = TestParam::GetContext();
-  const size_t num = 1 << 4;
+  const size_t num = 1 << 8;
   const size_t T = 1 << 3;
 
   auto rank0 = std::async([&] {
