@@ -100,6 +100,43 @@ size_t findB(size_t T, size_t num) {
   return B;
 }
 
+size_t findB_double(size_t T) {
+  auto logT = yacl::math::Log2Ceil(T);
+
+  if (logT <= 4) {
+    return 9;
+  }
+
+  size_t B = 1;
+  switch (logT) {
+    case 5:
+      B = 8;
+      break;
+    case 6:
+      B = 7;
+      break;
+    case 7:
+      B = 6;
+      break;
+    case 8:
+      B = 6;
+      break;
+    case 9:
+      B = 5;
+      break;
+    case 10:
+      B = 5;
+      break;
+    case 11:
+      B = 5;
+      break;
+    default:
+      B = 4;
+      break;
+  }
+  return B;
+}
+
 }  // namespace
 
 void TrueCorrelation::BeaverTriple(absl::Span<internal::ATy> a,
@@ -1726,7 +1763,8 @@ std::vector<size_t> TrueCorrelation::DoubleASTSet_2k(
 
   size_t total = T_num * depth;
 
-  const auto ot_per_ast = yacl::math::Log2Ceil(T) * T * findB(T, total);
+  const auto B = findB_double(num);
+  const auto ot_per_ast = yacl::math::Log2Ceil(T) * T * B;
   const auto batch_size = yacl::math::DivCeil(param::kBatchOtSize, ot_per_ast);
   size_t batch_num = yacl::math::DivCeil(total, batch_size);
 
@@ -1736,9 +1774,9 @@ std::vector<size_t> TrueCorrelation::DoubleASTSet_2k(
     std::vector<std::vector<internal::ATy>> cur_vec_b_T_all;
     std::vector<std::vector<internal::ATy>> cur_vec_aa_T_all;
     std::vector<std::vector<internal::ATy>> cur_vec_bb_T_all;
-    auto cur_vec_perm_T_all =
-        DoubleASTSet_batch_basic_2k(remain, T, cur_vec_a_T_all, cur_vec_b_T_all,
-                                    cur_vec_aa_T_all, cur_vec_bb_T_all);
+    auto cur_vec_perm_T_all = DoubleASTSet_batch_basic_2k(
+        B, remain, T, cur_vec_a_T_all, cur_vec_b_T_all, cur_vec_aa_T_all,
+        cur_vec_bb_T_all);
 
     for (size_t j = 0; j < remain; ++j) {
       vec_a_T_all.emplace_back(std::move(cur_vec_a_T_all[j]));
@@ -1980,7 +2018,9 @@ void TrueCorrelation::DoubleASTGet_2k(size_t T, absl::Span<internal::ATy> a,
   std::vector<std::vector<internal::ATy>> vec_bb_T_all;
 
   size_t total = T_num * depth;
-  const auto ot_per_ast = yacl::math::Log2Ceil(T) * T * findB(T, total);
+
+  const auto B = findB_double(num);
+  const auto ot_per_ast = yacl::math::Log2Ceil(T) * T * B;
   const auto batch_size = yacl::math::DivCeil(param::kBatchOtSize, ot_per_ast);
   size_t batch_num = yacl::math::DivCeil(total, batch_size);
 
@@ -1990,7 +2030,7 @@ void TrueCorrelation::DoubleASTGet_2k(size_t T, absl::Span<internal::ATy> a,
     std::vector<std::vector<internal::ATy>> cur_vec_b_T_all;
     std::vector<std::vector<internal::ATy>> cur_vec_aa_T_all;
     std::vector<std::vector<internal::ATy>> cur_vec_bb_T_all;
-    DoubleASTGet_batch_basic_2k(remain, T, cur_vec_a_T_all, cur_vec_b_T_all,
+    DoubleASTGet_batch_basic_2k(B, remain, T, cur_vec_a_T_all, cur_vec_b_T_all,
                                 cur_vec_aa_T_all, cur_vec_bb_T_all);
 
     for (size_t j = 0; j < remain; ++j) {
@@ -2289,14 +2329,15 @@ void TrueCorrelation::ASTGet_batch_basic_2k(
 }
 
 std::vector<std::vector<size_t>> TrueCorrelation::DoubleASTSet_batch_basic_2k(
-    size_t num, size_t T, std::vector<std::vector<internal::ATy>>& vec_a,
+    size_t B, size_t num, size_t T,
+    std::vector<std::vector<internal::ATy>>& vec_a,
     std::vector<std::vector<internal::ATy>>& vec_b,
     std::vector<std::vector<internal::ATy>>& vec_aa,
     std::vector<std::vector<internal::ATy>>& vec_bb) {
   // YACL_ENFORCE((num & (num - 1)) == 0);
   YACL_ENFORCE((T & (T - 1)) == 0);
 
-  auto ext = findB(T, num);  // NB choose and cut
+  auto ext = B;  // NB choose and cut
   auto ext_num = num * ext;
 
   SPDLOG_INFO("T is {}, num is {}, num extend is {}", T, num, ext_num);
@@ -2352,14 +2393,15 @@ std::vector<std::vector<size_t>> TrueCorrelation::DoubleASTSet_batch_basic_2k(
 }
 
 void TrueCorrelation::DoubleASTGet_batch_basic_2k(
-    size_t num, size_t T, std::vector<std::vector<internal::ATy>>& vec_a,
+    size_t B, size_t num, size_t T,
+    std::vector<std::vector<internal::ATy>>& vec_a,
     std::vector<std::vector<internal::ATy>>& vec_b,
     std::vector<std::vector<internal::ATy>>& vec_aa,
     std::vector<std::vector<internal::ATy>>& vec_bb) {
   // YACL_ENFORCE((num & (num - 1)) == 0);
   YACL_ENFORCE((T & (T - 1)) == 0);
 
-  auto ext = findB(T, num);  // NB choose and cut
+  auto ext = B;  // NB choose and cut
   auto ext_num = num * ext;
 
   SPDLOG_INFO("T is {}, num is {}, num extend is {}", T, num, ext_num);

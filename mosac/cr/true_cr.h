@@ -260,13 +260,15 @@ class TrueCorrelation : public Correlation {
                              std::vector<std::vector<internal::ATy>>& vec_b);
 
   std::vector<std::vector<size_t>> DoubleASTSet_batch_basic_2k(
-      size_t num, size_t T, std::vector<std::vector<internal::ATy>>& vec_a,
+      size_t B, size_t num, size_t T,
+      std::vector<std::vector<internal::ATy>>& vec_a,
       std::vector<std::vector<internal::ATy>>& vec_b,
       std::vector<std::vector<internal::ATy>>& vec_aa,
       std::vector<std::vector<internal::ATy>>& vec_bb);
 
   void DoubleASTGet_batch_basic_2k(
-      size_t num, size_t T, std::vector<std::vector<internal::ATy>>& vec_a,
+      size_t B, size_t num, size_t T,
+      std::vector<std::vector<internal::ATy>>& vec_a,
       std::vector<std::vector<internal::ATy>>& vec_b,
       std::vector<std::vector<internal::ATy>>& vec_aa,
       std::vector<std::vector<internal::ATy>>& vec_bb);
