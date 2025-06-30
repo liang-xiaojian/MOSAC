@@ -56,12 +56,21 @@ auto AST2k(const std::shared_ptr<yacl::link::Context> &lctx, size_t T,
     [[maybe_unused]] auto [remote_a, remote_b, remote_aa, remote_bb] =
         cr->DoubleASTGet_2k(T, num);
     TIMER_N_COMM_END_PRINT(_DoubleAST2k);
+
+    TIMER_N_COMM_START(_RandomVole);
+    [[maybe_unused]] auto [vole0_a, vole0_b] = cr->RandomVoleSet(4 * num);
+    [[maybe_unused]] auto [vole1_c] = cr->RandomVoleGet(4 * num);
+    TIMER_N_COMM_END_PRINT(_RandomVole);
   } else {
     TIMER_N_COMM_START(_DoubleAST2k);
     [[maybe_unused]] auto [remote_a, remote_b, remote_aa, remote_bb] =
         cr->DoubleASTGet_2k(T, num);
     [[maybe_unused]] auto [perm, a, b, aa, bb] = cr->DoubleASTSet_2k(T, num);
     TIMER_N_COMM_END_PRINT(_DoubleAST2k);
+    TIMER_N_COMM_START(_RandomVole);
+    [[maybe_unused]] auto [vole0_c] = cr->RandomVoleGet(4 * num);
+    [[maybe_unused]] auto [vole1_a, vole1_b] = cr->RandomVoleSet(4 * num);
+    TIMER_N_COMM_END_PRINT(_RandomVole);
   }
   cr->DelayCheck();
   TIMER_N_COMM_END_PRINT(DoubleAST2k_2_side);
