@@ -90,6 +90,15 @@ class FakeCorrelation : public Correlation {
                        absl::Span<internal::ATy> aa,
                        absl::Span<internal::ATy> bb) override;
 
+  std::vector<size_t> _DoubleASTSet_2k(size_t T, absl::Span<internal::ATy> a,
+                                       absl::Span<internal::ATy> b,
+                                       absl::Span<internal::ATy> aa,
+                                       absl::Span<internal::ATy> bb) override;
+  void _DoubleASTGet_2k(size_t T, absl::Span<internal::ATy> a,
+                        absl::Span<internal::ATy> b,
+                        absl::Span<internal::ATy> aa,
+                        absl::Span<internal::ATy> bb) override;
+
   // entry
   internal::ATy NMul(absl::Span<internal::ATy> r) override;
 

@@ -309,6 +309,52 @@ std::vector<size_t> FakeCorrelation::DoubleASTSet_2k(
   return perm;
 }
 
+void FakeCorrelation::_DoubleASTGet_2k(size_t T, absl::Span<internal::ATy> a,
+                                       absl::Span<internal::ATy> b,
+                                       absl::Span<internal::ATy> aa,
+                                       absl::Span<internal::ATy> bb) {
+  const size_t size = a.size();
+  YACL_ENFORCE(size == b.size());
+  YACL_ENFORCE(size == aa.size());
+  YACL_ENFORCE(size == bb.size());
+
+  YACL_ENFORCE((size & (size - 1)) == 0);
+  YACL_ENFORCE((T & (T - 1)) == 0);
+
+  std::vector<uint128_t> seeds(1);
+  ctx_->GetState<Prg>()->Fill(absl::MakeSpan(seeds));
+  std::vector<size_t> perm = GenPerm(seeds[0], size);
+  RandomAuth(a);
+  RandomAuth(aa);
+  for (size_t i = 0; i < size; ++i) {
+    b[perm[i]] = a[i];
+    bb[perm[i]] = aa[i];
+  }
+}
+
+std::vector<size_t> FakeCorrelation::_DoubleASTSet_2k(
+    size_t T, absl::Span<internal::ATy> a, absl::Span<internal::ATy> b,
+    absl::Span<internal::ATy> aa, absl::Span<internal::ATy> bb) {
+  const size_t size = a.size();
+  YACL_ENFORCE(size == b.size());
+  YACL_ENFORCE(size == aa.size());
+  YACL_ENFORCE(size == bb.size());
+
+  YACL_ENFORCE((size & (size - 1)) == 0);
+  YACL_ENFORCE((T & (T - 1)) == 0);
+
+  std::vector<uint128_t> seeds(1);
+  ctx_->GetState<Prg>()->Fill(absl::MakeSpan(seeds));
+  std::vector<size_t> perm = GenPerm(seeds[0], size);
+  RandomAuth(a);
+  RandomAuth(aa);
+  for (size_t i = 0; i < size; ++i) {
+    b[perm[i]] = a[i];
+    bb[perm[i]] = aa[i];
+  }
+  return perm;
+}
+
 void FakeCorrelation::ASTGet(absl::Span<internal::ATy> a,
                              absl::Span<internal::ATy> b) {
   const size_t size = a.size();

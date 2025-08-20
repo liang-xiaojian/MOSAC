@@ -14,7 +14,7 @@ test_all: test example
 test:
 	bazel test -c opt --distdir=./thirdparty //...
 
-example: offline_shuffle offline_shuffle_opt online_shuffle offline_AST2k online_AST2k offline_DoubleAST2k online_DoubleAST2k
+example: offline_shuffle offline_shuffle_opt online_shuffle offline_AST2k online_AST2k offline_DoubleAST2k offline_opt_DoubleAST2k online_DoubleAST2k
 
 offline_shuffle:
 	bazel run -c opt --distdir=./thirdparty //mosac/example:NDSS_offline_example -- --alone=1 --small_power=4 --big_power=12 --CR=1 --opt=0
@@ -30,6 +30,9 @@ offline_AST2k:
 
 offline_DoubleAST2k:
 	bazel run -c opt --distdir=./thirdparty //mosac/example:DoubleAST2k_offline_example -- --alone=1 --small_power=4 --big_power=12 --CR=1
+
+offline_opt_DoubleAST2k:
+	bazel run -c opt --distdir=./thirdparty //mosac/example:opt_DoubleAST2k_offline_example -- --alone=1 --small_power=4 --big_power=12 --CR=1
 
 online_AST2k:
 	bazel run -c opt --distdir=./thirdparty //mosac/example:socket_example -- --alone=1 --num=4096 --CR=0 --cache=1

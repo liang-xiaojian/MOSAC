@@ -529,6 +529,89 @@ TEST(CrTest, DoubleASTWork_2k) {
   }
 }
 
+TEST(CrTest, _DoubleASTWork_2k) {
+  auto context = TestParam::GetContext();
+  const size_t num = 1 << 8;
+  const size_t T = 1 << 3;
+
+  auto rank0 = std::async([&] {
+    auto cr = context[0]->GetState<Correlation>();
+    auto [perm, a, b, aa, bb] = cr->_DoubleASTSet_2k(T, num);
+    YACL_ENFORCE(cr->DelayCheck());
+    return std::make_tuple(perm, a, b, aa, bb);
+  });
+  auto rank1 = std::async([&] {
+    auto cr = context[1]->GetState<Correlation>();
+    auto [a, b, aa, bb] = cr->_DoubleASTGet_2k(T, num);
+    YACL_ENFORCE(cr->DelayCheck());
+    return std::make_tuple(a, b, aa, bb);
+  });
+
+  auto [perm, a0, b0, aa0, bb0] = rank0.get();
+  auto [a1, b1, aa1, bb1] = rank1.get();
+
+  auto a0_val = internal::ExtractVal(a0);
+  auto a1_val = internal::ExtractVal(a1);
+  auto b0_val = internal::ExtractVal(b0);
+  auto b1_val = internal::ExtractVal(b1);
+
+  auto aa0_val = internal::ExtractVal(aa0);
+  auto aa1_val = internal::ExtractVal(aa1);
+  auto bb0_val = internal::ExtractVal(bb0);
+  auto bb1_val = internal::ExtractVal(bb1);
+
+  auto a_val =
+      internal::op::Add(absl::MakeSpan(a0_val), absl::MakeSpan(a1_val));
+  auto b_val =
+      internal::op::Add(absl::MakeSpan(b0_val), absl::MakeSpan(b1_val));
+
+  auto aa_val =
+      internal::op::Add(absl::MakeSpan(aa0_val), absl::MakeSpan(aa1_val));
+  auto bb_val =
+      internal::op::Add(absl::MakeSpan(bb0_val), absl::MakeSpan(bb1_val));
+
+  for (size_t i = 0; i < num; ++i) {
+    EXPECT_EQ(a_val[i], b_val[perm[i]]);
+    EXPECT_EQ(aa_val[i], bb_val[perm[i]]);
+  }
+
+  auto a0_mac = internal::ExtractMac(a0);
+  auto a1_mac = internal::ExtractMac(a1);
+  auto b0_mac = internal::ExtractMac(b0);
+  auto b1_mac = internal::ExtractMac(b1);
+
+  auto aa0_mac = internal::ExtractMac(aa0);
+  auto aa1_mac = internal::ExtractMac(aa1);
+  auto bb0_mac = internal::ExtractMac(bb0);
+  auto bb1_mac = internal::ExtractMac(bb1);
+
+  auto a_mac =
+      internal::op::Add(absl::MakeSpan(a0_mac), absl::MakeSpan(a1_mac));
+  auto b_mac =
+      internal::op::Add(absl::MakeSpan(b0_mac), absl::MakeSpan(b1_mac));
+
+  auto aa_mac =
+      internal::op::Add(absl::MakeSpan(aa0_mac), absl::MakeSpan(aa1_mac));
+  auto bb_mac =
+      internal::op::Add(absl::MakeSpan(bb0_mac), absl::MakeSpan(bb1_mac));
+
+  auto key = context[0]->GetState<Correlation>()->GetKey() +
+             context[1]->GetState<Correlation>()->GetKey();
+
+  for (size_t i = 0; i < num; ++i) {
+    EXPECT_EQ(key * a_val[i], a_mac[i]);
+    EXPECT_EQ(key * b_val[i], b_mac[i]);
+
+    EXPECT_EQ(key * aa_val[i], aa_mac[i]);
+    EXPECT_EQ(key * bb_val[i], bb_mac[i]);
+  }
+
+  sort(perm.begin(), perm.end());
+  for (size_t i = 0; i < num; ++i) {
+    EXPECT_EQ(perm[i], i);
+  }
+}
+
 TEST(CrTest, VoleTest) {
   auto context = TestParam::GetContext();
   const size_t num = 1 << 4;
