@@ -58,7 +58,9 @@ auto AST2k(const std::shared_ptr<yacl::link::Context> &lctx, size_t T,
 
     TIMER_N_COMM_START(_NMUL);
     cr->NMul(absl::MakeSpan(a));
+    cr->NMul(absl::MakeSpan(a));
     cr->NMul(absl::MakeSpan(b));
+    cr->NMul(absl::MakeSpan(remote_a));
     cr->NMul(absl::MakeSpan(remote_a));
     cr->NMul(absl::MakeSpan(remote_b));
     TIMER_N_COMM_END_PRINT(_NMUL);
@@ -74,7 +76,9 @@ auto AST2k(const std::shared_ptr<yacl::link::Context> &lctx, size_t T,
 
     TIMER_N_COMM_START(_NMUL);
     cr->NMul(absl::MakeSpan(remote_a));
+    cr->NMul(absl::MakeSpan(remote_a));
     cr->NMul(absl::MakeSpan(remote_b));
+    cr->NMul(absl::MakeSpan(a));
     cr->NMul(absl::MakeSpan(a));
     cr->NMul(absl::MakeSpan(b));
     TIMER_N_COMM_END_PRINT(_NMUL);

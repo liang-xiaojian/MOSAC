@@ -246,6 +246,13 @@ std::vector<ATy> Protocol::OptSShuffleAGet(absl::Span<const ATy> in,
   return internal::OptSShuffleAGet(ctx_, in);
 }
 
+std::vector<PTy> Protocol::NMulP(absl::Span<const PTy> in, bool cache) {
+  if (cache) {
+    return internal::NMulP_cache(ctx_, in);
+  }
+  return internal::NMulP(ctx_, in);
+}
+
 std::vector<ATy> Protocol::NMulA(absl::Span<const ATy> in, bool cache) {
   if (cache) {
     return internal::NMulA_cache(ctx_, in);

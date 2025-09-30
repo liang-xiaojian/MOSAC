@@ -132,6 +132,8 @@ class Protocol : public State {
 
   std::vector<ATy> NMulA(absl::Span<const ATy> in, bool cache = false);
 
+  std::vector<PTy> NMulP(absl::Span<const PTy> in, bool cache = false);
+
   std::vector<ATy> ZeroOneA(size_t num, bool cache = false);
 
   std::pair<std::vector<ATy>, std::vector<ATy>> RandFairA(size_t num,
