@@ -32,13 +32,14 @@
   name##_recv_bytes = name##_st_end->recv_bytes - name##_recv_bytes;     \
   name##_recv_action = name##_st_end->recv_actions - name##_recv_action;
 
-#define COMM_PRINT(name)                                                     \
-  SPDLOG_INFO(                                                               \
-      "[P{}](COMM) {} send bytes: {} && send actions: {} && recv bytes: {} " \
-      "&& "                                                                  \
-      "recv actions: {}",                                                    \
-      rank, std::string(#name), name##_send_bytes, name##_send_action,       \
-      name##_recv_bytes, name##_recv_action);
+#define COMM_PRINT(name)                                                    \
+  SPDLOG_INFO(                                                              \
+      "[P{}](COMM) {} send bytes: {} ( {:.2f} MB ) && send actions: {} && " \
+      "recv bytes: {} ( {:.2f} MB ) && recv actions: {}",                   \
+      rank, std::string(#name), name##_send_bytes,                          \
+      name##_send_bytes * 1.0 / 1024 / 1024, name##_send_action,            \
+      name##_recv_bytes, name##_recv_bytes * 1.0 / 1024 / 1024,             \
+      name##_recv_action);
 
 #define TIMER_N_COMM_START(name) \
   COMM_START(name);              \

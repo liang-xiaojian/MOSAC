@@ -162,7 +162,27 @@ std::vector<ATy> SShuffleA(std::shared_ptr<Context>& ctx,
 std::vector<ATy> SShuffleA_cache(std::shared_ptr<Context>& ctx,
                                  absl::Span<const ATy> in);
 
+// Opt Secure Shuffle
+std::vector<ATy> OptSShuffleAGet(std::shared_ptr<Context>& ctx,
+                                 absl::Span<const ATy> in);
+std::vector<ATy> OptSShuffleAGet_cache(std::shared_ptr<Context>& ctx,
+                                       absl::Span<const ATy> in);
+
+std::vector<ATy> OptSShuffleASet(std::shared_ptr<Context>& ctx,
+                                 absl::Span<const ATy> in);
+std::vector<ATy> OptSShuffleASet_cache(std::shared_ptr<Context>& ctx,
+                                       absl::Span<const ATy> in);
+
+std::vector<ATy> OptSShuffleA(std::shared_ptr<Context>& ctx,
+                              absl::Span<const ATy> in);
+std::vector<ATy> OptSShuffleA_cache(std::shared_ptr<Context>& ctx,
+                                    absl::Span<const ATy> in);
+
 // NMul
+std::vector<PTy> NMulP(std::shared_ptr<Context>& ctx, absl::Span<const PTy> in);
+std::vector<PTy> NMulP_cache(std::shared_ptr<Context>& ctx,
+                             absl::Span<const PTy> in);
+
 std::vector<ATy> NMulA(std::shared_ptr<Context>& ctx, absl::Span<const ATy> in);
 std::vector<ATy> NMulA_cache(std::shared_ptr<Context>& ctx,
                              absl::Span<const ATy> in);

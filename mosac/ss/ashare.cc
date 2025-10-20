@@ -938,7 +938,10 @@ std::vector<ATy> SShuffleASet(std::shared_ptr<Context>& ctx,
 
   auto rand_p = RandP(ctx, 1);
   auto ones_p = OnesP(ctx, num);
+  auto rand_pp = RandP(ctx, 1);
   auto ext_rand_p = ScalarMulPP(ctx, rand_p[0], ones_p);
+  auto ext_rand_pp = ScalarMulPP(ctx, rand_pp[0], ones_p);
+
   auto in_sub_rand = SubAP(ctx, in, ext_rand_p);
   auto product_in = NMulA(ctx, in_sub_rand);
 
@@ -946,11 +949,19 @@ std::vector<ATy> SShuffleASet(std::shared_ptr<Context>& ctx,
   auto product_ret = NMulA(ctx, ret_sub_rand);
   auto check_zeros = SubAA(ctx, product_in, product_ret);
 
-  auto rand_a = RandA(ctx, 1);  // mask
+  auto mask_sub_rand = SubPP(ctx, mask_P, ext_rand_pp);
+  auto product_mask = NMulP(ctx, mask_sub_rand);
+  auto c_sub_rand = SubAP(ctx, c, ext_rand_pp);
+  auto product_c = NMulA(ctx, c_sub_rand);
+  auto check_zeros2 = SubPA(ctx, product_mask, product_c);
+
+  check_zeros.push_back(check_zeros2[0]);
+
+  auto rand_a = RandA(ctx, 2);  // mask
   auto check_zeros_mul = MulAA(ctx, check_zeros, rand_a);
   auto zeros = A2P_delay(ctx, check_zeros_mul);
 
-  YACL_ENFORCE(zeros.size() == 1 && zeros[0] == PTy(0));
+  YACL_ENFORCE(zeros.size() == 2 && zeros[0] == PTy(0) && zeros[1] == PTy(0));
 
   return ret;
 }
@@ -969,8 +980,11 @@ std::vector<ATy> SShuffleASet_cache(std::shared_ptr<Context>& ctx,
   auto ret = AddAA_cache(ctx, absl::MakeConstSpan(c), absl::MakeConstSpan(_b));
 
   auto rand_p = RandP_cache(ctx, 1);
+  auto rand_pp = RandP_cache(ctx, 1);
   auto ones_p = OnesP_cache(ctx, num);
   auto ext_rand_p = ScalarMulPP_cache(ctx, rand_p[0], ones_p);
+  auto ext_rand_pp = ScalarMulPP_cache(ctx, rand_pp[0], ones_p);
+
   auto in_sub_rand = SubAP_cache(ctx, in, ext_rand_p);
   auto product_in = NMulA_cache(ctx, in_sub_rand);
 
@@ -978,7 +992,15 @@ std::vector<ATy> SShuffleASet_cache(std::shared_ptr<Context>& ctx,
   auto product_ret = NMulA_cache(ctx, ret_sub_rand);
   auto check_zeros = SubAA_cache(ctx, product_in, product_ret);
 
-  auto rand_a = RandA_cache(ctx, 1);
+  auto mask_sub_rand = SubPP_cache(ctx, mask_P, ext_rand_pp);
+  auto product_mask = NMulP_cache(ctx, mask_sub_rand);
+  auto c_sub_rand = SubAP_cache(ctx, c, ext_rand_pp);
+  auto product_c = NMulA_cache(ctx, c_sub_rand);
+  auto check_zeros2 = SubPA_cache(ctx, product_mask, product_c);
+
+  check_zeros.push_back(check_zeros2[0]);
+
+  auto rand_a = RandA_cache(ctx, 2);
   auto check_zeros_mul = MulAA_cache(ctx, check_zeros, rand_a);
   [[maybe_unused]] auto zeros = A2P_delay_cache(ctx, check_zeros_mul);
 
@@ -998,8 +1020,10 @@ std::vector<ATy> SShuffleAGet(std::shared_ptr<Context>& ctx,
   auto ret = AddAA(ctx, absl::MakeConstSpan(c), absl::MakeConstSpan(_b));
 
   auto rand_p = RandP(ctx, 1);
+  auto rand_pp = RandP(ctx, 1);
   auto ones_p = OnesP(ctx, num);
   auto ext_rand_p = ScalarMulPP(ctx, rand_p[0], ones_p);
+  auto ext_rand_pp = ScalarMulPP(ctx, rand_pp[0], ones_p);
   auto in_sub_rand = SubAP(ctx, in, ext_rand_p);
   auto product_in = NMulA(ctx, in_sub_rand);
 
@@ -1007,11 +1031,19 @@ std::vector<ATy> SShuffleAGet(std::shared_ptr<Context>& ctx,
   auto product_ret = NMulA(ctx, ret_sub_rand);
   auto check_zeros = SubAA(ctx, product_in, product_ret);
 
-  auto rand_a = RandA(ctx, 1);  // mask
+  auto mask_sub_rand = SubPP(ctx, mask_P, ext_rand_pp);
+  auto product_mask = NMulP(ctx, mask_sub_rand);
+  auto c_sub_rand = SubAP(ctx, c, ext_rand_pp);
+  auto product_c = NMulA(ctx, c_sub_rand);
+  auto check_zeros2 = SubPA(ctx, product_mask, product_c);
+
+  check_zeros.push_back(check_zeros2[0]);
+
+  auto rand_a = RandA(ctx, 2);  // mask
   auto check_zeros_mul = MulAA(ctx, check_zeros, rand_a);
   auto zeros = A2P_delay(ctx, check_zeros_mul);
 
-  YACL_ENFORCE(zeros.size() == 1 && zeros[0] == PTy(0));
+  YACL_ENFORCE(zeros.size() == 2 && zeros[0] == PTy(0) && zeros[1] == PTy(0));
 
   return ret;
 }
@@ -1032,8 +1064,11 @@ std::vector<ATy> SShuffleAGet_cache(std::shared_ptr<Context>& ctx,
   auto ret = AddAA_cache(ctx, absl::MakeConstSpan(c), absl::MakeConstSpan(_b));
 
   auto rand_p = RandP_cache(ctx, 1);
+  auto rand_pp = RandP_cache(ctx, 1);
   auto ones_p = OnesP_cache(ctx, num);
   auto ext_rand_p = ScalarMulPP_cache(ctx, rand_p[0], ones_p);
+  auto ext_rand_pp = ScalarMulPP_cache(ctx, rand_pp[0], ones_p);
+
   auto in_sub_rand = SubAP_cache(ctx, in, ext_rand_p);
   auto product_in = NMulA_cache(ctx, in_sub_rand);
 
@@ -1041,7 +1076,15 @@ std::vector<ATy> SShuffleAGet_cache(std::shared_ptr<Context>& ctx,
   auto product_ret = NMulA_cache(ctx, ret_sub_rand);
   auto check_zeros = SubAA_cache(ctx, product_in, product_ret);
 
-  auto rand_a = RandA_cache(ctx, 1);
+  auto mask_sub_rand = SubPP_cache(ctx, mask_P, ext_rand_pp);
+  auto product_mask = NMulP_cache(ctx, mask_sub_rand);
+  auto c_sub_rand = SubAP_cache(ctx, c, ext_rand_pp);
+  auto product_c = NMulA_cache(ctx, c_sub_rand);
+  auto check_zeros2 = SubPA_cache(ctx, product_mask, product_c);
+
+  check_zeros.push_back(check_zeros2[0]);
+
+  auto rand_a = RandA_cache(ctx, 2);
   auto check_zeros_mul = MulAA_cache(ctx, check_zeros, rand_a);
   [[maybe_unused]] auto zeros = A2P_delay_cache(ctx, check_zeros_mul);
 
@@ -1068,6 +1111,258 @@ std::vector<ATy> SShuffleA_cache(std::shared_ptr<Context>& ctx,
     auto tmp = SShuffleAGet_cache(ctx, in);
     return SShuffleASet_cache(ctx, tmp);
   }
+}
+
+// --------------- Optimize Secure Shuffle ---------------
+std::vector<ATy> OptSShuffleASet(std::shared_ptr<Context>& ctx,
+                                 absl::Span<const ATy> in) {
+  const size_t num = in.size();
+  auto cr = ctx->GetState<Correlation>();
+  auto conn = ctx->GetState<Connection>();
+
+  auto [vole_a, vole_b] = cr->RandomVoleSet(2 * num);
+
+  auto diff = internal::op::Sub(
+      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(in.data()),
+                          2 * num),
+      absl::MakeSpan(vole_a));
+  conn->SendAsync(
+      conn->NextRank(),
+      yacl::ByteContainerView(diff.data(), 2 * num * sizeof(internal::PTy)),
+      "OptSS first vole");
+
+  vole_b = internal::op::Neg(vole_b);
+  auto _in =
+      absl::MakeSpan(reinterpret_cast<internal::ATy*>(vole_b.data()), num);
+
+  auto [perm, _a, _b, _aa, _bb] = cr->DoubleASTSet(num);
+  auto mask_A = SubAA(ctx, absl::MakeConstSpan(in), absl::MakeConstSpan(_a));
+  auto mask_AA = SubAA(ctx, absl::MakeConstSpan(_in), absl::MakeConstSpan(_aa));
+
+  auto mask_P = A2P_delay(ctx, absl::MakeConstSpan(mask_A));
+  auto mask_PP = A2P_delay(ctx, absl::MakeConstSpan(mask_AA));
+
+  auto shuffle_mask_P = ZerosP(ctx, num);
+  auto shuffle_mask_PP = ZerosP(ctx, num);
+  for (size_t i = 0; i < num; ++i) {
+    shuffle_mask_P[perm[i]] = mask_P[i];
+    shuffle_mask_PP[perm[i]] = mask_PP[i];
+  }
+
+  auto c = SetA(ctx, absl::MakeConstSpan(shuffle_mask_P));
+  auto cc = SetA(ctx, absl::MakeConstSpan(shuffle_mask_PP));
+
+  auto ret = AddAA(ctx, absl::MakeConstSpan(c), absl::MakeConstSpan(_b));
+  auto ret2 = AddAA(ctx, absl::MakeConstSpan(cc), absl::MakeConstSpan(_bb));
+
+  auto [vole_aa, vole_bb] = cr->RandomVoleSet(2 * num);
+
+  auto _diff = internal::op::Sub(
+      absl::MakeConstSpan(reinterpret_cast<internal::PTy*>(ret.data()),
+                          2 * num),
+      absl::MakeSpan(vole_aa));
+
+  conn->SendAsync(
+      conn->NextRank(),
+      yacl::ByteContainerView(_diff.data(), 2 * num * sizeof(internal::PTy)),
+      "OptSS second vole");
+
+  auto check = internal::op::Add(
+      absl::MakeConstSpan(reinterpret_cast<internal::PTy*>(ret2.data()),
+                          2 * num),
+      absl::MakeSpan(vole_bb));
+
+  auto hash = yacl::crypto::Sm3(
+      yacl::ByteContainerView(check.data(), 2 * num * sizeof(internal::PTy)));
+
+  auto remote_hash = conn->ExchangeWithCommit(yacl::ByteContainerView(hash));
+  YACL_ENFORCE(yacl::ByteContainerView(hash) ==
+               yacl::ByteContainerView(remote_hash));
+  return ret;
+}
+
+std::vector<ATy> OptSShuffleASet_cache(std::shared_ptr<Context>& ctx,
+                                       absl::Span<const ATy> in) {
+  const size_t num = in.size();
+  auto cr = ctx->GetState<Correlation>();
+  auto conn = ctx->GetState<Connection>();
+
+  cr->RandomVoleSet_cache(2 * num);
+  cr->DoubleASTSet_cache(num);
+  auto mask_A =
+      SubAA_cache(ctx, absl::MakeConstSpan(in), absl::MakeConstSpan(in));
+  auto mask_AA =
+      SubAA_cache(ctx, absl::MakeConstSpan(in), absl::MakeConstSpan(in));
+
+  auto mask_P = A2P_delay_cache(ctx, absl::MakeConstSpan(mask_A));
+  auto mask_PP = A2P_delay_cache(ctx, absl::MakeConstSpan(mask_AA));
+
+  auto shuffle_mask_P = ZerosP_cache(ctx, num);
+  auto shuffle_mask_PP = ZerosP_cache(ctx, num);
+
+  auto c = SetA_cache(ctx, absl::MakeConstSpan(shuffle_mask_P));
+  auto cc = SetA_cache(ctx, absl::MakeConstSpan(shuffle_mask_PP));
+
+  auto ret = AddAA_cache(ctx, absl::MakeConstSpan(c), absl::MakeConstSpan(c));
+  [[maybe_unused]] auto ret2 =
+      AddAA_cache(ctx, absl::MakeConstSpan(cc), absl::MakeConstSpan(cc));
+
+  cr->RandomVoleSet_cache(2 * num);
+
+  return ret;
+}
+
+std::vector<ATy> OptSShuffleAGet(std::shared_ptr<Context>& ctx,
+                                 absl::Span<const ATy> in) {
+  const size_t num = in.size();
+  auto cr = ctx->GetState<Correlation>();
+  auto conn = ctx->GetState<Connection>();
+
+  auto [vole_c] = cr->RandomVoleGet(2 * num);
+  auto vole_key = cr->GetVoleKey();
+  auto diff_buf = conn->Recv(conn->NextRank(), "OptSS first vole");
+  YACL_ENFORCE(diff_buf.size() == int64_t(2 * num * sizeof(internal::PTy)));
+  auto diff = absl::MakeSpan(diff_buf.data<internal::PTy>(), 2 * num);
+  auto diff_plus = internal::op::Add(
+      diff, absl::MakeConstSpan(
+                reinterpret_cast<const internal::PTy*>(in.data()), 2 * num));
+  auto diff_mul = internal::op::ScalarMul(vole_key, diff_plus);
+  auto offset = internal::op::Add(diff_mul, vole_c);
+  auto _in =
+      absl::MakeSpan(reinterpret_cast<internal::ATy*>(offset.data()), num);
+  auto [_a, _b, _aa, _bb] = cr->DoubleASTGet(num);
+  auto mask_A = SubAA(ctx, absl::MakeConstSpan(in), absl::MakeConstSpan(_a));
+  auto mask_AA = SubAA(ctx, absl::MakeConstSpan(_in), absl::MakeConstSpan(_aa));
+
+  auto mask_P = A2P_delay(ctx, absl::MakeConstSpan(mask_A));
+  auto mask_PP = A2P_delay(ctx, absl::MakeConstSpan(mask_AA));
+
+  auto c = GetA(ctx, num);
+  auto cc = GetA(ctx, num);
+
+  auto ret = AddAA(ctx, absl::MakeConstSpan(c), absl::MakeConstSpan(_b));
+  auto ret2 = AddAA(ctx, absl::MakeConstSpan(cc), absl::MakeConstSpan(_bb));
+
+  auto [vole_cc] = cr->RandomVoleGet(2 * num);
+  auto _diff_buf = conn->Recv(conn->NextRank(), "OptSS first vole");
+  YACL_ENFORCE(_diff_buf.size() == int64_t(2 * num * sizeof(internal::PTy)));
+  auto _diff = absl::MakeSpan(_diff_buf.data<internal::PTy>(), 2 * num);
+  auto _diff_plus = internal::op::Add(
+      _diff, absl::MakeConstSpan(
+                 reinterpret_cast<const internal::PTy*>(ret.data()), 2 * num));
+  auto _diff_mul = internal::op::ScalarMul(vole_key, _diff_plus);
+  auto _offset = internal::op::Add(_diff_mul, vole_cc);
+
+  auto check = internal::op::Sub(
+      absl::MakeSpan(_offset),
+      absl::MakeConstSpan(reinterpret_cast<internal::PTy*>(ret2.data()),
+                          2 * num));
+
+  auto hash = yacl::crypto::Sm3(
+      yacl::ByteContainerView(check.data(), 2 * num * sizeof(internal::PTy)));
+
+  auto remote_hash = conn->ExchangeWithCommit(yacl::ByteContainerView(hash));
+  YACL_ENFORCE(yacl::ByteContainerView(hash) ==
+               yacl::ByteContainerView(remote_hash));
+
+  return ret;
+}
+
+std::vector<ATy> OptSShuffleAGet_cache(std::shared_ptr<Context>& ctx,
+                                       absl::Span<const ATy> in) {
+  const size_t num = in.size();
+  auto cr = ctx->GetState<Correlation>();
+
+  cr->RandomVoleGet_cache(2 * num);
+  cr->DoubleASTGet_cache(num);
+
+  auto mask_A =
+      SubAA_cache(ctx, absl::MakeConstSpan(in), absl::MakeConstSpan(in));
+  auto mask_AA =
+      SubAA_cache(ctx, absl::MakeConstSpan(in), absl::MakeConstSpan(in));
+
+  auto mask_P = A2P_delay_cache(ctx, absl::MakeConstSpan(mask_A));
+  auto mask_PP = A2P_delay_cache(ctx, absl::MakeConstSpan(mask_AA));
+
+  auto c = GetA_cache(ctx, num);
+  auto cc = GetA_cache(ctx, num);
+
+  auto ret = AddAA_cache(ctx, absl::MakeConstSpan(c), absl::MakeConstSpan(c));
+  [[maybe_unused]] auto ret2 =
+      AddAA_cache(ctx, absl::MakeConstSpan(cc), absl::MakeConstSpan(cc));
+
+  cr->RandomVoleGet_cache(2 * num);
+  return ret;
+}
+
+std::vector<ATy> OptSShuffleA(std::shared_ptr<Context>& ctx,
+                              absl::Span<const ATy> in) {
+  if (ctx->GetRank() == 0) {
+    auto tmp = OptSShuffleASet(ctx, in);
+    return OptSShuffleAGet(ctx, tmp);
+  } else {
+    auto tmp = OptSShuffleAGet(ctx, in);
+    return OptSShuffleASet(ctx, tmp);
+  }
+}
+
+std::vector<ATy> OptSShuffleA_cache(std::shared_ptr<Context>& ctx,
+                                    absl::Span<const ATy> in) {
+  if (ctx->GetRank() == 0) {
+    auto tmp = OptSShuffleASet_cache(ctx, in);
+    return OptSShuffleAGet_cache(ctx, tmp);
+  } else {
+    auto tmp = OptSShuffleAGet_cache(ctx, in);
+    return OptSShuffleASet_cache(ctx, tmp);
+  }
+}
+
+std::vector<PTy> NMulP(std::shared_ptr<Context>& ctx,
+                       absl::Span<const PTy> in) {
+  const size_t num = in.size();
+
+  auto lrhs = in;
+  size_t remain = num;
+  std::vector<internal::PTy> tmp;
+
+  while (remain > 1) {
+    size_t half_size = lrhs.size() / 2;
+    auto lhs = lrhs.subspan(0, half_size);
+    auto rhs = lrhs.subspan(half_size, half_size);
+    auto last = lrhs[lrhs.size() - 1];
+
+    tmp = MulPP(ctx, lhs, rhs);
+    if (remain % 2 == 1) {
+      tmp.emplace_back(last);
+    }
+    lrhs = absl::MakeConstSpan(tmp);
+    remain = tmp.size();
+  }
+  return tmp;
+}
+
+std::vector<PTy> NMulP_cache(std::shared_ptr<Context>& ctx,
+                             absl::Span<const PTy> in) {
+  const size_t num = in.size();
+
+  auto lrhs = in;
+  size_t remain = num;
+  std::vector<internal::PTy> tmp;
+
+  while (remain > 1) {
+    size_t half_size = lrhs.size() / 2;
+    auto lhs = lrhs.subspan(0, half_size);
+    auto rhs = lrhs.subspan(half_size, half_size);
+    auto last = lrhs[lrhs.size() - 1];
+
+    tmp = MulPP_cache(ctx, lhs, rhs);
+    if (remain % 2 == 1) {
+      tmp.emplace_back(last);
+    }
+    lrhs = absl::MakeConstSpan(tmp);
+    remain = tmp.size();
+  }
+  return tmp;
 }
 
 std::vector<ATy> NMulA(std::shared_ptr<Context>& ctx,

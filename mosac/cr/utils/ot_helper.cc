@@ -557,8 +557,8 @@ void OtHelper::BaseVoleSend(std::shared_ptr<Connection>& conn,
   auto buf = conn->Recv(conn->NextRank(), "MalBaseVole");
   auto extra_ab =
       absl::MakeSpan(reinterpret_cast<internal::PTy*>(buf.data()), 2);
-  SPDLOG_INFO("{} v.s. {}", (extra_ab[0] * delta + extra_ab[1]).GetVal(),
-              extra_c.GetVal());
+  // SPDLOG_INFO("{} v.s. {}", (extra_ab[0] * delta + extra_ab[1]).GetVal(),
+  //             extra_c.GetVal());
   YACL_ENFORCE(extra_ab[0] * delta + extra_ab[1] == extra_c);
   // ---- consistency check ----
 }
@@ -715,6 +715,60 @@ void OtHelper::BatchASTRecv(std::shared_ptr<Connection>& conn, size_t total_num,
                             std::vector<std::vector<internal::ATy>>& lhs,
                             std::vector<std::vector<internal::ATy>>& rhs) {
   shuffle::BatchASTRecv(conn, ot_sender_, total_num, per_size, r, lhs, rhs);
+}
+
+// ---------------------
+//  Double AST
+// ---------------------
+
+void OtHelper::DoubleASTSend(std::shared_ptr<Connection>& conn,
+                             absl::Span<const size_t> perm,
+                             absl::Span<const internal::ATy> r,
+                             absl::Span<internal::ATy> a,
+                             absl::Span<internal::ATy> b,
+                             /* double AST */
+                             absl::Span<const internal::ATy> rr,
+                             absl::Span<internal::ATy> aa,
+                             absl::Span<internal::ATy> bb) {
+  shuffle::DoubleASTSend(conn, ot_receiver_, perm, r, a, b, rr, aa, bb);
+}
+
+void OtHelper::DoubleASTRecv(std::shared_ptr<Connection>& conn,
+                             absl::Span<const internal::ATy> r,
+                             absl::Span<internal::ATy> a,
+                             absl::Span<internal::ATy> b,
+                             /* double AST */
+                             absl::Span<const internal::ATy> rr,
+                             absl::Span<internal::ATy> aa,
+                             absl::Span<internal::ATy> bb) {
+  shuffle::DoubleASTRecv(conn, ot_sender_, r, a, b, rr, aa, bb);
+}
+
+void OtHelper::BatchDoubleASTSend(
+    std::shared_ptr<Connection>& conn, size_t total_num, size_t per_size,
+    const std::vector<std::vector<size_t>>& perms,
+    absl::Span<const internal::ATy> r,
+    std::vector<std::vector<internal::ATy>>& lhs,
+    std::vector<std::vector<internal::ATy>>& rhs,
+    /* double AST */
+    absl::Span<const internal::ATy> rr,
+    std::vector<std::vector<internal::ATy>>& llhs,
+    std::vector<std::vector<internal::ATy>>& rrhs) {
+  shuffle::BatchDoubleASTSend(conn, ot_receiver_, total_num, per_size, perms, r,
+                              lhs, rhs, rr, llhs, rrhs);
+}
+
+void OtHelper::BatchDoubleASTRecv(
+    std::shared_ptr<Connection>& conn, size_t total_num, size_t per_size,
+    absl::Span<const internal::ATy> r,
+    std::vector<std::vector<internal::ATy>>& lhs,
+    std::vector<std::vector<internal::ATy>>& rhs,
+    /* double AST */
+    absl::Span<const internal::ATy> rr,
+    std::vector<std::vector<internal::ATy>>& llhs,
+    std::vector<std::vector<internal::ATy>>& rrhs) {
+  shuffle::BatchDoubleASTRecv(conn, ot_sender_, total_num, per_size, r, lhs,
+                              rhs, rr, llhs, rrhs);
 }
 
 }  // namespace mosac::ot

@@ -1,5 +1,8 @@
 #include "mosac/cr/true_cr.h"
 
+#include <algorithm>
+#include <vector>
+
 #include "mosac/cr/param.h"
 #include "mosac/cr/utils/ot_helper.h"
 #include "mosac/ss/type.h"
@@ -92,6 +95,43 @@ size_t findB(size_t T, size_t num) {
       break;
     default:
       B = ASTFindB(kExtend10, num);
+      break;
+  }
+  return B;
+}
+
+size_t findB_double(size_t T) {
+  auto logT = yacl::math::Log2Ceil(T);
+
+  if (logT <= 4) {
+    return 9;
+  }
+
+  size_t B = 1;
+  switch (logT) {
+    case 5:
+      B = 8;
+      break;
+    case 6:
+      B = 7;
+      break;
+    case 7:
+      B = 6;
+      break;
+    case 8:
+      B = 6;
+      break;
+    case 9:
+      B = 5;
+      break;
+    case 10:
+      B = 5;
+      break;
+    case 11:
+      B = 5;
+      break;
+    default:
+      B = 4;
       break;
   }
   return B;
@@ -275,6 +315,20 @@ void TrueCorrelation::RandomAuth(absl::Span<internal::ATy> out) {
       absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(rands.data()),
                           2 * num),
       absl::MakeSpan(reinterpret_cast<internal::PTy*>(out.data()), 2 * num));
+}
+
+void TrueCorrelation::RandomVoleSet(absl::Span<internal::PTy> a,
+                                    absl::Span<internal::PTy> b) {
+  const size_t num = a.size();
+  YACL_ENFORCE(num == b.size());
+  YACL_ENFORCE(setup_extra_vole_ == true);
+
+  extra_vole_receiver_->rrecv(absl::MakeSpan(a), absl::MakeSpan(b));
+}
+
+void TrueCorrelation::RandomVoleGet(absl::Span<internal::PTy> c) {
+  YACL_ENFORCE(setup_extra_vole_ == true);
+  extra_vole_sender_->rsend(absl::MakeSpan(c));
 }
 
 void TrueCorrelation::ShuffleSet(absl::Span<const size_t> perm,
@@ -469,6 +523,575 @@ void TrueCorrelation::ASTGet(absl::Span<internal::ATy> a,
   // for (size_t i = 0; i < B; ++i) {
   //   YACL_ENFORCE(o[i] == internal::PTy(0));
   // }
+}
+
+// DoubleAST
+
+// One way MulHelpher
+std::vector<internal::ATy> MulHelperSet(
+    const std::shared_ptr<Connection>& conn, absl::Span<const internal::ATy> in,
+    absl::Span<const internal::PTy> vole_a,
+    absl::Span<const internal::PTy> vole_b) {
+  auto num = in.size();
+  YACL_ENFORCE(2 * num == vole_a.size());
+  YACL_ENFORCE(2 * num == vole_b.size());
+  auto diff = internal::op::Sub(
+      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(in.data()),
+                          2 * num),
+      vole_a);
+  conn->SendAsync(
+      conn->NextRank(),
+      yacl::ByteContainerView(diff.data(), 2 * num * sizeof(internal::PTy)),
+      "MulHelper");
+
+  auto ret = internal::op::Neg(vole_b);
+  auto out = absl::MakeConstSpan(
+      reinterpret_cast<const internal::ATy*>(ret.data()), num);
+  return std::vector<internal::ATy>(out.begin(), out.end());
+}
+
+std::vector<internal::ATy> MulHelperGet(
+    const std::shared_ptr<Connection>& conn, const internal::PTy& vole_key,
+    absl::Span<const internal::ATy> in,
+    absl::Span<const internal::PTy> vole_c) {
+  auto num = in.size();
+  YACL_ENFORCE(2 * num == vole_c.size());
+
+  auto diff_buf = conn->Recv(conn->NextRank(), "MulHelper");
+  YACL_ENFORCE(diff_buf.size() == int64_t(2 * num * sizeof(internal::PTy)));
+  auto diff = absl::MakeSpan(diff_buf.data<internal::PTy>(), 2 * num);
+  internal::op::AddInplace(
+      diff, absl::MakeConstSpan(
+                reinterpret_cast<const internal::PTy*>(in.data()), 2 * num));
+  auto diff_mul = internal::op::ScalarMul(vole_key, diff);
+  auto offset = internal::op::Add(diff_mul, vole_c);
+  auto out =
+      absl::MakeSpan(reinterpret_cast<internal::ATy*>(offset.data()), num);
+  return std::vector<internal::ATy>(out.begin(), out.end());
+}
+
+// Two way MulHelpher
+std::pair<std::vector<internal::ATy>, std::vector<internal::ATy>> MulHelperSet(
+    const std::shared_ptr<Connection>& conn,
+    absl::Span<const internal::ATy> in0,
+    absl::Span<const internal::PTy> vole_a0,
+    absl::Span<const internal::PTy> vole_b0,
+    absl::Span<const internal::ATy> in1,
+    absl::Span<const internal::PTy> vole_a1,
+    absl::Span<const internal::PTy> vole_b1) {
+  auto num0 = in0.size();
+  auto num1 = in1.size();
+  YACL_ENFORCE(2 * num0 == vole_a0.size());
+  YACL_ENFORCE(2 * num0 == vole_b0.size());
+  YACL_ENFORCE(2 * num1 == vole_a1.size());
+  YACL_ENFORCE(2 * num1 == vole_b1.size());
+  auto diff0 = internal::op::Sub(
+      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(in0.data()),
+                          2 * num0),
+      vole_a0);
+
+  auto diff1 = internal::op::Sub(
+      absl::MakeConstSpan(reinterpret_cast<const internal::PTy*>(in1.data()),
+                          2 * num1),
+      vole_a1);
+
+  copy(diff1.begin(), diff1.end(), back_inserter(diff0));
+
+  conn->SendAsync(conn->NextRank(),
+                  yacl::ByteContainerView(
+                      diff0.data(), 2 * (num0 + num1) * sizeof(internal::PTy)),
+                  "MulHelper");
+
+  auto ret0 = internal::op::Neg(vole_b0);
+  auto ret1 = internal::op::Neg(vole_b1);
+  auto out0 = absl::MakeConstSpan(
+      reinterpret_cast<const internal::ATy*>(ret0.data()), num0);
+  auto out1 = absl::MakeConstSpan(
+      reinterpret_cast<const internal::ATy*>(ret1.data()), num1);
+  return std::make_pair(std::vector<internal::ATy>(out0.begin(), out0.end()),
+                        std::vector<internal::ATy>(out1.begin(), out1.end()));
+}
+
+std::pair<std::vector<internal::ATy>, std::vector<internal::ATy>> MulHelperGet(
+    const std::shared_ptr<Connection>& conn, const internal::PTy& vole_key,
+    absl::Span<const internal::ATy> in0,
+    absl::Span<const internal::PTy> vole_c0,
+    absl::Span<const internal::ATy> in1,
+    absl::Span<const internal::PTy> vole_c1) {
+  auto num0 = in0.size();
+  auto num1 = in1.size();
+  YACL_ENFORCE(2 * num0 == vole_c0.size());
+  YACL_ENFORCE(2 * num1 == vole_c1.size());
+
+  auto diff_buf = conn->Recv(conn->NextRank(), "MulHelper");
+  YACL_ENFORCE(diff_buf.size() ==
+               int64_t(2 * (num0 + num1) * sizeof(internal::PTy)));
+  auto diff0 = absl::MakeSpan(diff_buf.data<internal::PTy>(), 2 * num0);
+  auto diff1 =
+      absl::MakeSpan(diff_buf.data<internal::PTy>() + 2 * num0, 2 * num1);
+
+  internal::op::AddInplace(
+      diff0, absl::MakeConstSpan(
+                 reinterpret_cast<const internal::PTy*>(in0.data()), 2 * num0));
+  internal::op::AddInplace(
+      diff1, absl::MakeConstSpan(
+                 reinterpret_cast<const internal::PTy*>(in1.data()), 2 * num1));
+  auto diff_mul0 = internal::op::ScalarMul(vole_key, diff0);
+  auto diff_mul1 = internal::op::ScalarMul(vole_key, diff1);
+
+  auto offset0 = internal::op::Add(diff_mul0, vole_c0);
+  auto offset1 = internal::op::Add(diff_mul1, vole_c1);
+
+  auto out0 =
+      absl::MakeSpan(reinterpret_cast<internal::ATy*>(offset0.data()), num0);
+  auto out1 =
+      absl::MakeSpan(reinterpret_cast<internal::ATy*>(offset1.data()), num1);
+  return std::make_pair(std::vector<internal::ATy>(out0.begin(), out0.end()),
+                        std::vector<internal::ATy>(out1.begin(), out1.end()));
+}
+
+std::vector<size_t> TrueCorrelation::DoubleASTSet(
+    absl::Span<internal::ATy> a, absl::Span<internal::ATy> b,
+    [[maybe_unused]] absl::Span<internal::ATy> aa,
+    [[maybe_unused]] absl::Span<internal::ATy> bb) {
+  auto conn = ctx_->GetConnection();
+  auto num = a.size();
+  YACL_ENFORCE(b.size() == num);
+  YACL_ENFORCE(aa.size() == num);
+  YACL_ENFORCE(bb.size() == num);
+
+  // std::vector<internal::ATy> r(num);
+  // RandomAuth(absl::MakeSpan(r));
+
+  // std::vector<internal::ATy> rr(num);
+  // RandomAuth(absl::MakeSpan(rr));
+
+  // auto perm = GenPerm(num);
+
+  // ot::OtHelper(ot_sender_, ot_receiver_)
+  //     .DoubleASTSend(conn, perm, r, a, b, rr, aa, bb);
+  const size_t B = 5;
+
+  std::vector<std::vector<internal::ATy>> a_vec;
+  std::vector<std::vector<internal::ATy>> b_vec;
+  std::vector<std::vector<internal::ATy>> aa_vec;
+  std::vector<std::vector<internal::ATy>> bb_vec;
+
+  std::vector<std::vector<size_t>> perm_vec;
+  std::vector<internal::ATy> r_vec(num * B);
+  std::vector<internal::ATy> rr_vec(num * B);
+
+  RandomAuth(absl::MakeSpan(r_vec));
+  RandomAuth(absl::MakeSpan(rr_vec));
+
+  for (size_t i = 0; i < B; ++i) {
+    perm_vec.push_back(GenPerm(num));
+  }
+
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .BatchDoubleASTSend(conn, B, num, perm_vec, r_vec, a_vec, b_vec, rr_vec,
+                          aa_vec, bb_vec);
+
+  auto perm = perm_vec[0];
+  std::copy(a_vec[0].begin(), a_vec[0].end(), a.begin());
+  std::copy(b_vec[0].begin(), b_vec[0].end(), b.begin());
+
+  std::copy(aa_vec[0].begin(), aa_vec[0].end(), aa.begin());
+  std::copy(bb_vec[0].begin(), bb_vec[0].end(), bb.begin());
+
+  for (size_t i = 1; i < B; ++i) {
+    // std::vector<internal::ATy> _a(num, {0, 0});
+    // std::vector<internal::ATy> _aa(num, {0, 0});
+    // std::vector<internal::ATy> _b(num, {0, 0});
+    // std::vector<internal::ATy> _bb(num, {0, 0});
+
+    // std::vector<internal::ATy> _r(num);
+    // RandomAuth(absl::MakeSpan(_r));
+
+    // std::vector<internal::ATy> _rr(num);
+    // RandomAuth(absl::MakeSpan(_rr));
+
+    // auto _perm = GenPerm(num);
+
+    // ot::OtHelper(ot_sender_, ot_receiver_)
+    //     .DoubleASTSend(conn, _perm, _r, absl::MakeSpan(_a),
+    //     absl::MakeSpan(_b),
+    //                    _rr, absl::MakeSpan(_aa), absl::MakeSpan(_bb));
+    auto _a = a_vec[i];
+    auto _b = b_vec[i];
+    auto _aa = aa_vec[i];
+    auto _bb = bb_vec[i];
+    auto _perm = perm_vec[i];
+
+    // shuffle b and bb with (_a,_b) and (_aa,_bb)
+    // 1. compute b * R
+    // 2. compute _a * T and _b * T
+    // 3. shuffle b with (_a, _b)
+    // 4. shuffle b * R with (_a * T, _b * T)
+    auto vole_receiver_R =
+        std::make_shared<vole::SilentVoleAdapter>(conn, ot_receiver_);
+    vole_receiver_R->OneTimeSetup();
+
+    std::vector<internal::PTy> tmp_a(8 * num, 0);
+    std::vector<internal::PTy> tmp_b(8 * num, 0);
+    vole_receiver_R->rrecv(absl::MakeSpan(tmp_a), absl::MakeSpan(tmp_b));
+
+    auto bR = MulHelperSet(conn, absl::MakeSpan(b),
+                           absl::MakeSpan(tmp_a).subspan(0, 2 * num),
+                           absl::MakeSpan(tmp_b).subspan(0, 2 * num));
+
+    auto bbR = MulHelperSet(conn, absl::MakeSpan(bb),
+                            absl::MakeSpan(tmp_a).subspan(2 * num, 2 * num),
+                            absl::MakeSpan(tmp_b).subspan(2 * num, 2 * num));
+
+    auto vole_receiver_T =
+        std::make_shared<vole::SilentVoleAdapter>(conn, ot_receiver_);
+    vole_receiver_T->OneTimeSetup();
+
+    std::vector<internal::PTy> _tmp_a(8 * num, 0);
+    std::vector<internal::PTy> _tmp_b(8 * num, 0);
+    vole_receiver_T->rrecv(absl::MakeSpan(_tmp_a), absl::MakeSpan(_tmp_b));
+
+    std::vector<internal::ATy> _ab(2 * num);
+
+    std::copy(_a.begin(), _a.end(), _ab.begin());
+    std::copy(_b.begin(), _b.end(), _ab.begin() + num);
+
+    auto _abT = MulHelperSet(conn, absl::MakeSpan(_ab),
+                             absl::MakeSpan(_tmp_a).subspan(0, 4 * num),
+                             absl::MakeSpan(_tmp_b).subspan(0, 4 * num));
+
+    std::vector<internal::ATy> _aabb(2 * num);
+
+    std::copy(_aa.begin(), _aa.end(), _aabb.begin());
+    std::copy(_bb.begin(), _bb.end(), _aabb.begin() + num);
+
+    auto _aabbT =
+        MulHelperSet(conn, absl::MakeSpan(_aabb),
+                     absl::MakeSpan(_tmp_a).subspan(4 * num, 4 * num),
+                     absl::MakeSpan(_tmp_b).subspan(4 * num, 4 * num));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()), num * 2));
+    auto p = OpenAndDelayCheck(absl::MakeConstSpan(b));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(bR.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_abT.data()), num * 2));
+
+    auto pR = OpenAndDelayCheck(absl::MakeConstSpan(bR));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(bb.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aa.data()), num * 2));
+    auto pp = OpenAndDelayCheck(absl::MakeConstSpan(bb));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(bbR.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aabbT.data()),
+                       num * 2));
+
+    auto ppR = OpenAndDelayCheck(absl::MakeConstSpan(bbR));
+
+    std::vector<internal::PTy> shuffle_p(num);
+    std::vector<internal::PTy> shuffle_pR(num);
+    std::vector<internal::PTy> shuffle_pp(num);
+    std::vector<internal::PTy> shuffle_ppR(num);
+    std::vector<size_t> shuffle_perm(num);
+    for (size_t i = 0; i < num; ++i) {
+      shuffle_p[_perm[i]] = p[i];
+      shuffle_pR[_perm[i]] = pR[i];
+      shuffle_pp[_perm[i]] = pp[i];
+      shuffle_ppR[_perm[i]] = ppR[i];
+      shuffle_perm[i] = _perm[perm[i]];
+    }
+
+    std::vector<internal::ATy> shuffle_p_A(num);
+    AuthSet(absl::MakeConstSpan(shuffle_p), absl::MakeSpan(shuffle_p_A));
+
+    std::vector<internal::ATy> shuffle_p_AR(num);
+    AuthSet(absl::MakeConstSpan(shuffle_pR), absl::MakeSpan(shuffle_p_AR));
+
+    std::vector<internal::ATy> shuffle_pp_A(num);
+    AuthSet(absl::MakeConstSpan(shuffle_pp), absl::MakeSpan(shuffle_pp_A));
+
+    std::vector<internal::ATy> shuffle_pp_AR(num);
+    AuthSet(absl::MakeConstSpan(shuffle_ppR), absl::MakeSpan(shuffle_pp_AR));
+
+    internal::op::AddInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_A.data()),
+                       num * 2));
+
+    internal::op::AddInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_bb.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_A.data()),
+                       num * 2));
+
+    auto shuffle_bR = internal::op::Add(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_abT.data()) + num * 2,
+                       num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_AR.data()),
+                       num * 2));
+
+    auto shuffled_bR =
+        MulHelperSet(conn, absl::MakeSpan(_b),
+                     absl::MakeSpan(tmp_a).subspan(4 * num, 2 * num),
+                     absl::MakeSpan(tmp_b).subspan(4 * num, 2 * num));
+
+    auto shuffle_bbR = internal::op::Add(
+        absl::MakeSpan(
+            reinterpret_cast<internal::PTy*>(_aabbT.data()) + num * 2, num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_AR.data()),
+                       num * 2));
+
+    auto shuffled_bbR =
+        MulHelperSet(conn, absl::MakeSpan(_bb),
+                     absl::MakeSpan(tmp_a).subspan(6 * num, 2 * num),
+                     absl::MakeSpan(tmp_b).subspan(6 * num, 2 * num));
+
+    auto check = internal::op::Sub(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffled_bR.data()),
+                       num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_bR.data()),
+                       num * 2));
+
+    auto check2 = internal::op::Sub(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffled_bbR.data()),
+                       num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_bbR.data()),
+                       num * 2));
+
+    auto hash = yacl::crypto::Sm3(
+        yacl::ByteContainerView(check.data(), 2 * num * sizeof(internal::PTy)));
+    double_ast_check_buff_.push_back(hash);
+
+    // auto remote_hash =
+    // conn->ExchangeWithCommit(yacl::ByteContainerView(hash));
+    // YACL_ENFORCE(yacl::ByteContainerView(hash) ==
+    //              yacl::ByteContainerView(remote_hash));
+
+    auto hash2 = yacl::crypto::Sm3(yacl::ByteContainerView(
+        check2.data(), 2 * num * sizeof(internal::PTy)));
+    double_ast_check_buff_.push_back(hash2);
+
+    // auto remote_hash2 =
+    //     conn->ExchangeWithCommit(yacl::ByteContainerView(hash2));
+    // YACL_ENFORCE(yacl::ByteContainerView(hash2) ==
+    //              yacl::ByteContainerView(remote_hash2));
+
+    std::copy(_b.begin(), _b.end(), b.begin());
+    std::copy(_bb.begin(), _bb.end(), bb.begin());
+    std::swap(perm, shuffle_perm);
+  }
+
+  return perm;
+}
+
+void TrueCorrelation::DoubleASTGet(
+    absl::Span<internal::ATy> a, absl::Span<internal::ATy> b,
+    [[maybe_unused]] absl::Span<internal::ATy> aa,
+    [[maybe_unused]] absl::Span<internal::ATy> bb) {
+  auto conn = ctx_->GetConnection();
+  auto num = a.size();
+  YACL_ENFORCE(b.size() == num);
+  YACL_ENFORCE(aa.size() == num);
+  YACL_ENFORCE(bb.size() == num);
+
+  // std::vector<internal::ATy> r(num);
+  // RandomAuth(absl::MakeSpan(r));
+
+  // std::vector<internal::ATy> rr(num);
+  // RandomAuth(absl::MakeSpan(rr));
+
+  // ot::OtHelper(ot_sender_, ot_receiver_)
+  //     .DoubleASTRecv(conn, r, a, b, rr, aa, bb);
+
+  const size_t B = 5;
+
+  std::vector<std::vector<internal::ATy>> a_vec;
+  std::vector<std::vector<internal::ATy>> b_vec;
+  std::vector<std::vector<internal::ATy>> aa_vec;
+  std::vector<std::vector<internal::ATy>> bb_vec;
+
+  std::vector<internal::ATy> r_vec(num * B);
+  std::vector<internal::ATy> rr_vec(num * B);
+
+  RandomAuth(absl::MakeSpan(r_vec));
+  RandomAuth(absl::MakeSpan(rr_vec));
+
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .BatchDoubleASTRecv(conn, B, num, r_vec, a_vec, b_vec, rr_vec, aa_vec,
+                          bb_vec);
+
+  std::copy(a_vec[0].begin(), a_vec[0].end(), a.begin());
+  std::copy(b_vec[0].begin(), b_vec[0].end(), b.begin());
+
+  std::copy(aa_vec[0].begin(), aa_vec[0].end(), aa.begin());
+  std::copy(bb_vec[0].begin(), bb_vec[0].end(), bb.begin());
+
+  for (size_t i = 1; i < B; ++i) {
+    // std::vector<internal::ATy> _a(num, {0, 0});
+    // std::vector<internal::ATy> _aa(num, {0, 0});
+    // std::vector<internal::ATy> _b(num, {0, 0});
+    // std::vector<internal::ATy> _bb(num, {0, 0});
+
+    // std::vector<internal::ATy> _r(num);
+    // RandomAuth(absl::MakeSpan(_r));
+
+    // std::vector<internal::ATy> _rr(num);
+    // RandomAuth(absl::MakeSpan(_rr));
+
+    // ot::OtHelper(ot_sender_, ot_receiver_)
+    //     .DoubleASTRecv(conn, _r, absl::MakeSpan(_a), absl::MakeSpan(_b), _rr,
+    //                    absl::MakeSpan(_aa), absl::MakeSpan(_bb));
+    auto _a = a_vec[i];
+    auto _b = b_vec[i];
+    auto _aa = aa_vec[i];
+    auto _bb = bb_vec[i];
+
+    // shuffle b and bb with (_a,_b) and (_aa,_bb)
+    // 1. compute b * R
+    // 2. compute _a * T and _b * T
+    // 3. shuffle b with (_a, _b)
+    // 4. shuffle b * R with (_a * T, _b * T)
+    const auto R = internal::PTy::Rand();
+    const auto T = internal::PTy::Rand();
+
+    auto vole_sender_R =
+        std::make_shared<vole::SilentVoleAdapter>(conn, ot_sender_, R);
+    vole_sender_R->OneTimeSetup();
+
+    std::vector<internal::PTy> tmp_c(8 * num, 0);
+    vole_sender_R->rsend(absl::MakeSpan(tmp_c));
+
+    auto bR = MulHelperGet(conn, R, absl::MakeSpan(b),
+                           absl::MakeSpan(tmp_c).subspan(0, 2 * num));
+
+    auto bbR = MulHelperGet(conn, R, absl::MakeSpan(bb),
+                            absl::MakeSpan(tmp_c).subspan(2 * num, 2 * num));
+
+    auto vole_sender_T =
+        std::make_shared<vole::SilentVoleAdapter>(conn, ot_sender_, T);
+    vole_sender_T->OneTimeSetup();
+
+    std::vector<internal::PTy> _tmp_c(8 * num, 0);
+    vole_sender_T->rsend(absl::MakeSpan(_tmp_c));
+
+    std::vector<internal::ATy> _ab(2 * num);
+
+    std::copy(_a.begin(), _a.end(), _ab.begin());
+    std::copy(_b.begin(), _b.end(), _ab.begin() + num);
+
+    auto _abT = MulHelperGet(conn, T, absl::MakeSpan(_ab),
+                             absl::MakeSpan(_tmp_c).subspan(0, 4 * num));
+
+    std::vector<internal::ATy> _aabb(2 * num);
+
+    std::copy(_aa.begin(), _aa.end(), _aabb.begin());
+    std::copy(_bb.begin(), _bb.end(), _aabb.begin() + num);
+
+    auto _aabbT =
+        MulHelperGet(conn, T, absl::MakeSpan(_aabb),
+                     absl::MakeSpan(_tmp_c).subspan(4 * num, 4 * num));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()), num * 2));
+    [[maybe_unused]] auto p = OpenAndDelayCheck(absl::MakeConstSpan(b));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(bR.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_abT.data()), num * 2));
+    [[maybe_unused]] auto pR = OpenAndDelayCheck(absl::MakeConstSpan(bR));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(bb.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aa.data()), num * 2));
+    [[maybe_unused]] auto pp = OpenAndDelayCheck(absl::MakeConstSpan(bb));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(bbR.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aabbT.data()),
+                       num * 2));
+    [[maybe_unused]] auto ppR = OpenAndDelayCheck(absl::MakeConstSpan(bbR));
+
+    std::vector<internal::ATy> shuffle_p_A(num);
+    AuthGet(absl::MakeSpan(shuffle_p_A));
+
+    std::vector<internal::ATy> shuffle_p_AR(num);
+    AuthGet(absl::MakeSpan(shuffle_p_AR));
+
+    std::vector<internal::ATy> shuffle_pp_A(num);
+    AuthGet(absl::MakeSpan(shuffle_pp_A));
+
+    std::vector<internal::ATy> shuffle_pp_AR(num);
+    AuthGet(absl::MakeSpan(shuffle_pp_AR));
+
+    internal::op::AddInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_A.data()),
+                       num * 2));
+
+    internal::op::AddInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_bb.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_A.data()),
+                       num * 2));
+
+    auto shuffle_bR = internal::op::Add(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_abT.data()) + num * 2,
+                       num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_AR.data()),
+                       num * 2));
+
+    auto shuffled_bR =
+        MulHelperGet(conn, R, absl::MakeSpan(_b),
+                     absl::MakeSpan(tmp_c).subspan(4 * num, 2 * num));
+
+    auto shuffle_bbR = internal::op::Add(
+        absl::MakeSpan(
+            reinterpret_cast<internal::PTy*>(_aabbT.data()) + num * 2, num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_AR.data()),
+                       num * 2));
+
+    auto shuffled_bbR =
+        MulHelperGet(conn, R, absl::MakeSpan(_bb),
+                     absl::MakeSpan(tmp_c).subspan(6 * num, 2 * num));
+
+    auto check = internal::op::Sub(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_bR.data()),
+                       num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffled_bR.data()),
+                       num * 2));
+
+    auto check2 = internal::op::Sub(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_bbR.data()),
+                       num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffled_bbR.data()),
+                       num * 2));
+
+    auto hash = yacl::crypto::Sm3(
+        yacl::ByteContainerView(check.data(), 2 * num * sizeof(internal::PTy)));
+    double_ast_check_buff_.push_back(hash);
+
+    // auto remote_hash =
+    // conn->ExchangeWithCommit(yacl::ByteContainerView(hash));
+    // YACL_ENFORCE(yacl::ByteContainerView(hash) ==
+    //              yacl::ByteContainerView(remote_hash));
+
+    auto hash2 = yacl::crypto::Sm3(yacl::ByteContainerView(
+        check2.data(), 2 * num * sizeof(internal::PTy)));
+    double_ast_check_buff_.push_back(hash2);
+
+    // auto remote_hash2 =
+    //     conn->ExchangeWithCommit(yacl::ByteContainerView(hash2));
+    // YACL_ENFORCE(yacl::ByteContainerView(hash2) ==
+    //              yacl::ByteContainerView(remote_hash2));
+
+    std::copy(_b.begin(), _b.end(), b.begin());
+    std::copy(_bb.begin(), _bb.end(), bb.begin());
+  }
 }
 
 internal::ATy TrueCorrelation::NMul(absl::Span<internal::ATy> r) {
@@ -701,7 +1324,7 @@ std::vector<internal::PTy> TrueCorrelation::OpenAndDelayCheck(
 }
 
 bool TrueCorrelation::DelayCheck() {
-  if (delay_check_buff_.size() == 0) {
+  if (delay_check_buff_.size() == 0 && double_ast_check_buff_.size() == 0) {
     return true;
   }
 
@@ -720,6 +1343,23 @@ bool TrueCorrelation::DelayCheck() {
   delay_check_buff_.clear();
 
   SPDLOG_INFO("delay check result: {} ", flag);
+
+  if (double_ast_check_buff_.size() != 0) {
+    auto hash_val = yacl::crypto::Sm3(yacl::ByteContainerView(
+        double_ast_check_buff_.data(), double_ast_check_buff_.size() * 32));
+    auto remote_hash_val = conn->ExchangeWithCommit(
+        yacl::ByteContainerView(hash_val.data(), hash_val.size()));
+
+    auto ast_flag =
+        (yacl::ByteContainerView(hash_val.data(), hash_val.size()) ==
+         yacl::ByteContainerView(remote_hash_val));
+
+    double_ast_check_buff_.clear();
+
+    SPDLOG_INFO("double ast delay check result: {} ", ast_flag);
+
+    flag &= ast_flag;
+  }
 
   return flag;
 }
@@ -1170,6 +1810,841 @@ void TrueCorrelation::ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
   // }
 }
 
+std::vector<size_t> TrueCorrelation::DoubleASTSet_2k(
+    size_t T, absl::Span<internal::ATy> a, absl::Span<internal::ATy> b,
+    absl::Span<internal::ATy> aa, absl::Span<internal::ATy> bb) {
+  auto conn = ctx_->GetConnection();
+
+  const auto num = a.size();
+  YACL_ENFORCE(a.size() == b.size());
+  YACL_ENFORCE((num & (num - 1)) == 0);  // num = 2^n
+  YACL_ENFORCE((T & (T - 1)) == 0);      // T = 2^m
+  YACL_ENFORCE(num >= T);                // num should be greater than T
+
+  const auto num_bits = yacl::math::Log2Ceil(num);
+  const auto T_bits = yacl::math::Log2Ceil(T);
+
+  const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
+
+  std::vector<size_t> perm(num);
+
+  const auto T_num = num / T;
+
+  SPDLOG_INFO("depth {}, T_num {}, total {}", depth, T_num, depth * T_num);
+
+  std::vector<std::vector<internal::ATy>> vec_a;
+  std::vector<std::vector<internal::ATy>> vec_b;
+  std::vector<std::vector<internal::ATy>> vec_aa;
+  std::vector<std::vector<internal::ATy>> vec_bb;
+
+  std::vector<std::vector<internal::ATy>> vec_a_T_all;
+  std::vector<std::vector<internal::ATy>> vec_b_T_all;
+  std::vector<std::vector<internal::ATy>> vec_aa_T_all;
+  std::vector<std::vector<internal::ATy>> vec_bb_T_all;
+  std::vector<std::vector<size_t>> vec_perm_T_all;
+
+  size_t total = T_num * depth;
+
+  const auto B = findB_double(num);
+  const auto ot_per_ast = yacl::math::Log2Ceil(T) * T * B;
+  const auto batch_size = yacl::math::DivCeil(param::kBatchOtSize, ot_per_ast);
+  size_t batch_num = yacl::math::DivCeil(total, batch_size);
+
+  for (size_t i = 0; i < batch_num; ++i) {
+    size_t remain = std::min(batch_size, total - i * batch_size);
+    std::vector<std::vector<internal::ATy>> cur_vec_a_T_all;
+    std::vector<std::vector<internal::ATy>> cur_vec_b_T_all;
+    std::vector<std::vector<internal::ATy>> cur_vec_aa_T_all;
+    std::vector<std::vector<internal::ATy>> cur_vec_bb_T_all;
+    auto cur_vec_perm_T_all = DoubleASTSet_batch_basic_2k(
+        B, remain, T, cur_vec_a_T_all, cur_vec_b_T_all, cur_vec_aa_T_all,
+        cur_vec_bb_T_all);
+
+    for (size_t j = 0; j < remain; ++j) {
+      vec_a_T_all.emplace_back(std::move(cur_vec_a_T_all[j]));
+      vec_b_T_all.emplace_back(std::move(cur_vec_b_T_all[j]));
+      vec_aa_T_all.emplace_back(std::move(cur_vec_aa_T_all[j]));
+      vec_bb_T_all.emplace_back(std::move(cur_vec_bb_T_all[j]));
+      vec_perm_T_all.emplace_back(std::move(cur_vec_perm_T_all[j]));
+    }
+  }
+
+  std::vector<std::vector<internal::ATy>> vec_a_T(T_num);
+  std::vector<std::vector<internal::ATy>> vec_b_T(T_num);
+  std::vector<std::vector<internal::ATy>> vec_aa_T(T_num);
+  std::vector<std::vector<internal::ATy>> vec_bb_T(T_num);
+  std::vector<std::vector<size_t>> vec_perm_T(T_num);
+
+  auto vole_receiver_R =
+      std::make_shared<vole::SilentVoleAdapter>(conn, ot_receiver_);
+  vole_receiver_R->OneTimeSetup();
+
+  std::vector<internal::PTy> ext_tmp_a(8 * num * (depth - 1), 0);
+  std::vector<internal::PTy> ext_tmp_b(8 * num * (depth - 1), 0);
+  vole_receiver_R->rrecv(absl::MakeSpan(ext_tmp_a), absl::MakeSpan(ext_tmp_b));
+
+  auto vole_receiver_T =
+      std::make_shared<vole::SilentVoleAdapter>(conn, ot_receiver_);
+  vole_receiver_T->OneTimeSetup();
+
+  std::vector<internal::PTy> _ext_tmp_a(8 * num * (depth - 1), 0);
+  std::vector<internal::PTy> _ext_tmp_b(8 * num * (depth - 1), 0);
+  vole_receiver_T->rrecv(absl::MakeSpan(_ext_tmp_a),
+                         absl::MakeSpan(_ext_tmp_b));
+
+  for (size_t l = 0; l < depth; ++l) {
+    for (size_t i = 0; i < T_num; ++i) {
+      vec_perm_T[i] = std::move(vec_perm_T_all[l * T_num + i]);
+      vec_a_T[i] = std::move(vec_a_T_all[l * T_num + i]);
+      vec_b_T[i] = std::move(vec_b_T_all[l * T_num + i]);
+      vec_aa_T[i] = std::move(vec_aa_T_all[l * T_num + i]);
+      vec_bb_T[i] = std::move(vec_bb_T_all[l * T_num + i]);
+    }
+
+    if (l == 0) {
+      compose_vec_2k(l, vec_a_T, absl::MakeSpan(a));
+      compose_vec_2k(l, vec_b_T, absl::MakeSpan(b));
+      compose_vec_2k(l, vec_aa_T, absl::MakeSpan(aa));
+      compose_vec_2k(l, vec_bb_T, absl::MakeSpan(bb));
+      compose_perm_2k(l, vec_perm_T, absl::MakeSpan(perm));
+    } else {
+      std::vector<internal::ATy> _a(num, {0, 0});
+      std::vector<internal::ATy> _b(num, {0, 0});
+      std::vector<internal::ATy> _aa(num, {0, 0});
+      std::vector<internal::ATy> _bb(num, {0, 0});
+      std::vector<size_t> _perm(num);
+
+      compose_vec_2k(l, vec_a_T, absl::MakeSpan(_a));
+      compose_vec_2k(l, vec_b_T, absl::MakeSpan(_b));
+      compose_vec_2k(l, vec_aa_T, absl::MakeSpan(_aa));
+      compose_vec_2k(l, vec_bb_T, absl::MakeSpan(_bb));
+      compose_perm_2k(l, vec_perm_T, absl::MakeSpan(_perm));
+
+      // shuffle b and bb with (_a,_b) and (_aa,_bb)
+      // 1. compute b * R
+      // 2. compute _a * T and _b * T
+      // 3. shuffle b with (_a, _b)
+      // 4. shuffle b * R with (_a * T, _b * T)
+      // auto vole_receiver_R =
+      //     std::make_shared<vole::SilentVoleAdapter>(conn, ot_receiver_);
+      // vole_receiver_R->OneTimeSetup();
+
+      // std::vector<internal::PTy> tmp_a(8 * num, 0);
+      // std::vector<internal::PTy> tmp_b(8 * num, 0);
+      // vole_receiver_R->rrecv(absl::MakeSpan(tmp_a), absl::MakeSpan(tmp_b));
+      auto tmp_a =
+          absl::MakeSpan(ext_tmp_a).subspan(8 * num * (l - 1), 8 * num);
+      auto tmp_b =
+          absl::MakeSpan(ext_tmp_b).subspan(8 * num * (l - 1), 8 * num);
+
+      // auto bR = MulHelperSet(conn, absl::MakeSpan(b),
+      //                        absl::MakeSpan(tmp_a).subspan(0, 2 * num),
+      //                        absl::MakeSpan(tmp_b).subspan(0, 2 * num));
+
+      // auto bbR = MulHelperSet(conn, absl::MakeSpan(bb),
+      //                         absl::MakeSpan(tmp_a).subspan(2 * num, 2 *
+      //                         num), absl::MakeSpan(tmp_b).subspan(2 * num, 2
+      //                         * num));
+
+      auto [bR, bbR] = MulHelperSet(
+          conn, absl::MakeSpan(b), absl::MakeSpan(tmp_a).subspan(0, 2 * num),
+          absl::MakeSpan(tmp_b).subspan(0, 2 * num), absl::MakeSpan(bb),
+          absl::MakeSpan(tmp_a).subspan(2 * num, 2 * num),
+          absl::MakeSpan(tmp_b).subspan(2 * num, 2 * num));
+
+      // auto vole_receiver_T =
+      //     std::make_shared<vole::SilentVoleAdapter>(conn, ot_receiver_);
+      // vole_receiver_T->OneTimeSetup();
+
+      // std::vector<internal::PTy> _tmp_a(8 * num, 0);
+      // std::vector<internal::PTy> _tmp_b(8 * num, 0);
+      // vole_receiver_T->rrecv(absl::MakeSpan(_tmp_a), absl::MakeSpan(_tmp_b));
+      auto _tmp_a =
+          absl::MakeSpan(_ext_tmp_a).subspan(8 * num * (l - 1), 8 * num);
+      auto _tmp_b =
+          absl::MakeSpan(_ext_tmp_b).subspan(8 * num * (l - 1), 8 * num);
+
+      std::vector<internal::ATy> _ab(2 * num);
+
+      std::copy(_a.begin(), _a.end(), _ab.begin());
+      std::copy(_b.begin(), _b.end(), _ab.begin() + num);
+
+      std::vector<internal::ATy> _aabb(2 * num);
+
+      std::copy(_aa.begin(), _aa.end(), _aabb.begin());
+      std::copy(_bb.begin(), _bb.end(), _aabb.begin() + num);
+
+      // auto _abT = MulHelperSet(conn, absl::MakeSpan(_ab),
+      //                          absl::MakeSpan(_tmp_a).subspan(0, 4 * num),
+      //                          absl::MakeSpan(_tmp_b).subspan(0, 4 * num));
+
+      // auto _aabbT =
+      //     MulHelperSet(conn, absl::MakeSpan(_aabb),
+      //                  absl::MakeSpan(_tmp_a).subspan(4 * num, 4 * num),
+      //                  absl::MakeSpan(_tmp_b).subspan(4 * num, 4 * num));
+
+      auto [_abT, _aabbT] = MulHelperSet(
+          conn, absl::MakeSpan(_ab), absl::MakeSpan(_tmp_a).subspan(0, 4 * num),
+          absl::MakeSpan(_tmp_b).subspan(0, 4 * num), absl::MakeSpan(_aabb),
+          absl::MakeSpan(_tmp_a).subspan(4 * num, 4 * num),
+          absl::MakeSpan(_tmp_b).subspan(4 * num, 4 * num));
+
+      internal::op::SubInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()), num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()), num * 2));
+      auto p = OpenAndDelayCheck(absl::MakeConstSpan(b));
+
+      internal::op::SubInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(bR.data()), num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_abT.data()),
+                         num * 2));
+
+      auto pR = OpenAndDelayCheck(absl::MakeConstSpan(bR));
+
+      internal::op::SubInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(bb.data()), num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aa.data()),
+                         num * 2));
+      auto pp = OpenAndDelayCheck(absl::MakeConstSpan(bb));
+
+      internal::op::SubInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(bbR.data()), num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aabbT.data()),
+                         num * 2));
+
+      auto ppR = OpenAndDelayCheck(absl::MakeConstSpan(bbR));
+
+      std::vector<internal::PTy> shuffle_p(num);
+      std::vector<internal::PTy> shuffle_pR(num);
+      std::vector<internal::PTy> shuffle_pp(num);
+      std::vector<internal::PTy> shuffle_ppR(num);
+      std::vector<size_t> shuffle_perm(num);
+      for (size_t i = 0; i < num; ++i) {
+        shuffle_p[_perm[i]] = p[i];
+        shuffle_pR[_perm[i]] = pR[i];
+        shuffle_pp[_perm[i]] = pp[i];
+        shuffle_ppR[_perm[i]] = ppR[i];
+        shuffle_perm[i] = _perm[perm[i]];
+      }
+
+      std::vector<internal::ATy> shuffle_p_A(num);
+      AuthSet(absl::MakeConstSpan(shuffle_p), absl::MakeSpan(shuffle_p_A));
+
+      std::vector<internal::ATy> shuffle_p_AR(num);
+      AuthSet(absl::MakeConstSpan(shuffle_pR), absl::MakeSpan(shuffle_p_AR));
+
+      std::vector<internal::ATy> shuffle_pp_A(num);
+      AuthSet(absl::MakeConstSpan(shuffle_pp), absl::MakeSpan(shuffle_pp_A));
+
+      std::vector<internal::ATy> shuffle_pp_AR(num);
+      AuthSet(absl::MakeConstSpan(shuffle_ppR), absl::MakeSpan(shuffle_pp_AR));
+
+      internal::op::AddInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()), num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_A.data()),
+                         num * 2));
+
+      internal::op::AddInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_bb.data()), num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_A.data()),
+                         num * 2));
+
+      auto shuffle_bR = internal::op::Add(
+          absl::MakeSpan(
+              reinterpret_cast<internal::PTy*>(_abT.data()) + num * 2, num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_AR.data()),
+                         num * 2));
+
+      auto shuffle_bbR = internal::op::Add(
+          absl::MakeSpan(
+              reinterpret_cast<internal::PTy*>(_aabbT.data()) + num * 2,
+              num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_AR.data()),
+                         num * 2));
+
+      // auto shuffled_bR =
+      //     MulHelperSet(conn, absl::MakeSpan(_b),
+      //                  absl::MakeSpan(tmp_a).subspan(4 * num, 2 * num),
+      //                  absl::MakeSpan(tmp_b).subspan(4 * num, 2 * num));
+
+      // auto shuffled_bbR =
+      //     MulHelperSet(conn, absl::MakeSpan(_bb),
+      //                  absl::MakeSpan(tmp_a).subspan(6 * num, 2 * num),
+      //                  absl::MakeSpan(tmp_b).subspan(6 * num, 2 * num));
+
+      auto [shuffled_bR, shuffled_bbR] = MulHelperSet(
+          conn, absl::MakeSpan(_b),
+          absl::MakeSpan(tmp_a).subspan(4 * num, 2 * num),
+          absl::MakeSpan(tmp_b).subspan(4 * num, 2 * num), absl::MakeSpan(_bb),
+          absl::MakeSpan(tmp_a).subspan(6 * num, 2 * num),
+          absl::MakeSpan(tmp_b).subspan(6 * num, 2 * num));
+
+      auto check = internal::op::Sub(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffled_bR.data()),
+                         num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_bR.data()),
+                         num * 2));
+
+      auto check2 = internal::op::Sub(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffled_bbR.data()),
+                         num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_bbR.data()),
+                         num * 2));
+
+      auto hash = yacl::crypto::Sm3(yacl::ByteContainerView(
+          check.data(), 2 * num * sizeof(internal::PTy)));
+
+      double_ast_check_buff_.push_back(hash);
+      // auto remote_hash =
+      //     conn->ExchangeWithCommit(yacl::ByteContainerView(hash));
+      // YACL_ENFORCE(yacl::ByteContainerView(hash) ==
+      //              yacl::ByteContainerView(remote_hash));
+
+      auto hash2 = yacl::crypto::Sm3(yacl::ByteContainerView(
+          check2.data(), 2 * num * sizeof(internal::PTy)));
+
+      double_ast_check_buff_.push_back(hash2);
+      // auto remote_hash2 =
+      //     conn->ExchangeWithCommit(yacl::ByteContainerView(hash2));
+      // YACL_ENFORCE(yacl::ByteContainerView(hash2) ==
+      //              yacl::ByteContainerView(remote_hash2));
+
+      std::copy(_b.begin(), _b.end(), b.begin());
+      std::copy(_bb.begin(), _bb.end(), bb.begin());
+      std::swap(perm, shuffle_perm);
+    }
+  }
+
+  return perm;
+}
+
+void TrueCorrelation::DoubleASTGet_2k(size_t T, absl::Span<internal::ATy> a,
+                                      absl::Span<internal::ATy> b,
+                                      absl::Span<internal::ATy> aa,
+                                      absl::Span<internal::ATy> bb) {
+  auto conn = ctx_->GetConnection();
+
+  const auto num = a.size();
+  YACL_ENFORCE(a.size() == b.size());
+  YACL_ENFORCE((num & (num - 1)) == 0);  // num = 2^n
+  YACL_ENFORCE((T & (T - 1)) == 0);      // T = 2^m
+  YACL_ENFORCE(num >= T);                // num should be greater than T
+
+  const auto num_bits = yacl::math::Log2Ceil(num);
+  const auto T_bits = yacl::math::Log2Ceil(T);
+
+  const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
+
+  const auto T_num = num / T;
+
+  SPDLOG_INFO("depth {}, T_num {}, total {}", depth, T_num, depth * T_num);
+
+  std::vector<std::vector<internal::ATy>> vec_a_T_all;
+  std::vector<std::vector<internal::ATy>> vec_b_T_all;
+  std::vector<std::vector<internal::ATy>> vec_aa_T_all;
+  std::vector<std::vector<internal::ATy>> vec_bb_T_all;
+
+  size_t total = T_num * depth;
+
+  const auto B = findB_double(num);
+  const auto ot_per_ast = yacl::math::Log2Ceil(T) * T * B;
+  const auto batch_size = yacl::math::DivCeil(param::kBatchOtSize, ot_per_ast);
+  size_t batch_num = yacl::math::DivCeil(total, batch_size);
+
+  for (size_t i = 0; i < batch_num; ++i) {
+    size_t remain = std::min(batch_size, total - i * batch_size);
+    std::vector<std::vector<internal::ATy>> cur_vec_a_T_all;
+    std::vector<std::vector<internal::ATy>> cur_vec_b_T_all;
+    std::vector<std::vector<internal::ATy>> cur_vec_aa_T_all;
+    std::vector<std::vector<internal::ATy>> cur_vec_bb_T_all;
+    DoubleASTGet_batch_basic_2k(B, remain, T, cur_vec_a_T_all, cur_vec_b_T_all,
+                                cur_vec_aa_T_all, cur_vec_bb_T_all);
+
+    for (size_t j = 0; j < remain; ++j) {
+      vec_a_T_all.emplace_back(std::move(cur_vec_a_T_all[j]));
+      vec_b_T_all.emplace_back(std::move(cur_vec_b_T_all[j]));
+      vec_aa_T_all.emplace_back(std::move(cur_vec_aa_T_all[j]));
+      vec_bb_T_all.emplace_back(std::move(cur_vec_bb_T_all[j]));
+    }
+  }
+
+  std::vector<std::vector<internal::ATy>> vec_a_T(T_num);
+  std::vector<std::vector<internal::ATy>> vec_b_T(T_num);
+  std::vector<std::vector<internal::ATy>> vec_aa_T(T_num);
+  std::vector<std::vector<internal::ATy>> vec_bb_T(T_num);
+
+  const auto FpR = internal::PTy::Rand();
+  const auto FpT = internal::PTy::Rand();
+
+  auto vole_sender_R =
+      std::make_shared<vole::SilentVoleAdapter>(conn, ot_sender_, FpR);
+  vole_sender_R->OneTimeSetup();
+
+  std::vector<internal::PTy> ext_tmp_c(8 * num * (depth - 1), 0);
+  vole_sender_R->rsend(absl::MakeSpan(ext_tmp_c));
+
+  auto vole_sender_T =
+      std::make_shared<vole::SilentVoleAdapter>(conn, ot_sender_, FpT);
+  vole_sender_T->OneTimeSetup();
+
+  std::vector<internal::PTy> _ext_tmp_c(8 * num * (depth - 1), 0);
+  vole_sender_T->rsend(absl::MakeSpan(_ext_tmp_c));
+
+  for (size_t l = 0; l < depth; ++l) {
+    // ASTGet_batch_basic_2k(T_num, T, vec_a_T, vec_b_T);
+    for (size_t i = 0; i < T_num; ++i) {
+      vec_a_T[i] = std::move(vec_a_T_all[l * T_num + i]);
+      vec_b_T[i] = std::move(vec_b_T_all[l * T_num + i]);
+      vec_aa_T[i] = std::move(vec_aa_T_all[l * T_num + i]);
+      vec_bb_T[i] = std::move(vec_bb_T_all[l * T_num + i]);
+    }
+    if (l == 0) {
+      compose_vec_2k(l, vec_a_T, absl::MakeSpan(a));
+      compose_vec_2k(l, vec_b_T, absl::MakeSpan(b));
+      compose_vec_2k(l, vec_aa_T, absl::MakeSpan(aa));
+      compose_vec_2k(l, vec_bb_T, absl::MakeSpan(bb));
+    } else {
+      std::vector<internal::ATy> _a(num, {0, 0});
+      std::vector<internal::ATy> _b(num, {0, 0});
+      std::vector<internal::ATy> _aa(num, {0, 0});
+      std::vector<internal::ATy> _bb(num, {0, 0});
+
+      compose_vec_2k(l, vec_a_T, absl::MakeSpan(_a));
+      compose_vec_2k(l, vec_b_T, absl::MakeSpan(_b));
+      compose_vec_2k(l, vec_aa_T, absl::MakeSpan(_aa));
+      compose_vec_2k(l, vec_bb_T, absl::MakeSpan(_bb));
+
+      // shuffle b and bb with (_a,_b) and (_aa,_bb)
+      // 1. compute b * R
+      // 2. compute _a * T and _b * T
+      // 3. shuffle b with (_a, _b)
+      // 4. shuffle b * R with (_a * T, _b * T)
+      // const auto R = internal::PTy::Rand();
+      // const auto T = internal::PTy::Rand();
+
+      // auto vole_sender_R =
+      //     std::make_shared<vole::SilentVoleAdapter>(conn, ot_sender_, R);
+      // vole_sender_R->OneTimeSetup();
+
+      // std::vector<internal::PTy> tmp_c(8 * num, 0);
+      // vole_sender_R->rsend(absl::MakeSpan(tmp_c));
+      auto tmp_c =
+          absl::MakeSpan(ext_tmp_c).subspan(8 * num * (l - 1), 8 * num);
+
+      // auto bR = MulHelperGet(conn, R, absl::MakeSpan(b),
+      //                        absl::MakeSpan(tmp_c).subspan(0, 2 * num));
+
+      // auto bbR = MulHelperGet(conn, R, absl::MakeSpan(bb),
+      //                         absl::MakeSpan(tmp_c).subspan(2 * num, 2 *
+      //                         num));
+
+      auto [bR, bbR] = MulHelperGet(
+          conn, FpR, absl::MakeSpan(b),
+          absl::MakeSpan(tmp_c).subspan(0, 2 * num), absl::MakeSpan(bb),
+          absl::MakeSpan(tmp_c).subspan(2 * num, 2 * num));
+
+      // auto vole_sender_T =
+      //     std::make_shared<vole::SilentVoleAdapter>(conn, ot_sender_, T);
+      // vole_sender_T->OneTimeSetup();
+
+      // std::vector<internal::PTy> _tmp_c(8 * num, 0);
+      // vole_sender_T->rsend(absl::MakeSpan(_tmp_c));
+      auto _tmp_c =
+          absl::MakeSpan(_ext_tmp_c).subspan(8 * num * (l - 1), 8 * num);
+
+      std::vector<internal::ATy> _ab(2 * num);
+
+      std::copy(_a.begin(), _a.end(), _ab.begin());
+      std::copy(_b.begin(), _b.end(), _ab.begin() + num);
+
+      std::vector<internal::ATy> _aabb(2 * num);
+
+      std::copy(_aa.begin(), _aa.end(), _aabb.begin());
+      std::copy(_bb.begin(), _bb.end(), _aabb.begin() + num);
+
+      // auto _abT = MulHelperGet(conn, T, absl::MakeSpan(_ab),
+      //                          absl::MakeSpan(_tmp_c).subspan(0, 4 * num));
+
+      // auto _aabbT =
+      //     MulHelperGet(conn, T, absl::MakeSpan(_aabb),
+      //                  absl::MakeSpan(_tmp_c).subspan(4 * num, 4 * num));
+
+      auto [_abT, _aabbT] = MulHelperGet(
+          conn, FpT, absl::MakeSpan(_ab),
+          absl::MakeSpan(_tmp_c).subspan(0, 4 * num), absl::MakeSpan(_aabb),
+          absl::MakeSpan(_tmp_c).subspan(4 * num, 4 * num));
+
+      internal::op::SubInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()), num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()), num * 2));
+      [[maybe_unused]] auto p = OpenAndDelayCheck(absl::MakeConstSpan(b));
+
+      internal::op::SubInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(bR.data()), num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_abT.data()),
+                         num * 2));
+      [[maybe_unused]] auto pR = OpenAndDelayCheck(absl::MakeConstSpan(bR));
+
+      internal::op::SubInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(bb.data()), num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aa.data()),
+                         num * 2));
+      [[maybe_unused]] auto pp = OpenAndDelayCheck(absl::MakeConstSpan(bb));
+
+      internal::op::SubInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(bbR.data()), num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aabbT.data()),
+                         num * 2));
+      [[maybe_unused]] auto ppR = OpenAndDelayCheck(absl::MakeConstSpan(bbR));
+
+      std::vector<internal::ATy> shuffle_p_A(num);
+      AuthGet(absl::MakeSpan(shuffle_p_A));
+
+      std::vector<internal::ATy> shuffle_p_AR(num);
+      AuthGet(absl::MakeSpan(shuffle_p_AR));
+
+      std::vector<internal::ATy> shuffle_pp_A(num);
+      AuthGet(absl::MakeSpan(shuffle_pp_A));
+
+      std::vector<internal::ATy> shuffle_pp_AR(num);
+      AuthGet(absl::MakeSpan(shuffle_pp_AR));
+
+      internal::op::AddInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()), num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_A.data()),
+                         num * 2));
+
+      internal::op::AddInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_bb.data()), num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_A.data()),
+                         num * 2));
+
+      auto shuffle_bR = internal::op::Add(
+          absl::MakeSpan(
+              reinterpret_cast<internal::PTy*>(_abT.data()) + num * 2, num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_AR.data()),
+                         num * 2));
+
+      auto shuffle_bbR = internal::op::Add(
+          absl::MakeSpan(
+              reinterpret_cast<internal::PTy*>(_aabbT.data()) + num * 2,
+              num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_AR.data()),
+                         num * 2));
+
+      // auto shuffled_bR =
+      //     MulHelperGet(conn, R, absl::MakeSpan(_b),
+      //                  absl::MakeSpan(tmp_c).subspan(4 * num, 2 * num));
+
+      // auto shuffled_bbR =
+      //     MulHelperGet(conn, R, absl::MakeSpan(_bb),
+      //                  absl::MakeSpan(tmp_c).subspan(6 * num, 2 * num));
+
+      auto [shuffled_bR, shuffled_bbR] = MulHelperGet(
+          conn, FpR, absl::MakeSpan(_b),
+          absl::MakeSpan(tmp_c).subspan(4 * num, 2 * num), absl::MakeSpan(_bb),
+          absl::MakeSpan(tmp_c).subspan(6 * num, 2 * num));
+
+      auto check = internal::op::Sub(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_bR.data()),
+                         num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffled_bR.data()),
+                         num * 2));
+
+      auto check2 = internal::op::Sub(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_bbR.data()),
+                         num * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffled_bbR.data()),
+                         num * 2));
+
+      auto hash = yacl::crypto::Sm3(yacl::ByteContainerView(
+          check.data(), 2 * num * sizeof(internal::PTy)));
+      double_ast_check_buff_.push_back(hash);
+
+      // auto remote_hash =
+      //     conn->ExchangeWithCommit(yacl::ByteContainerView(hash));
+      // YACL_ENFORCE(yacl::ByteContainerView(hash) ==
+      //              yacl::ByteContainerView(remote_hash));
+
+      auto hash2 = yacl::crypto::Sm3(yacl::ByteContainerView(
+          check2.data(), 2 * num * sizeof(internal::PTy)));
+      double_ast_check_buff_.push_back(hash2);
+
+      // auto remote_hash2 =
+      //     conn->ExchangeWithCommit(yacl::ByteContainerView(hash2));
+      // YACL_ENFORCE(yacl::ByteContainerView(hash2) ==
+      //              yacl::ByteContainerView(remote_hash2));
+
+      std::copy(_b.begin(), _b.end(), b.begin());
+      std::copy(_bb.begin(), _bb.end(), bb.begin());
+    }
+  }
+}
+
+std::vector<size_t> TrueCorrelation::_DoubleASTSet_2k(
+    size_t T, absl::Span<internal::ATy> a, absl::Span<internal::ATy> b,
+    absl::Span<internal::ATy> aa, absl::Span<internal::ATy> bb) {
+  auto conn = ctx_->GetConnection();
+
+  const auto num = a.size();
+  YACL_ENFORCE(a.size() == b.size());
+  YACL_ENFORCE((num & (num - 1)) == 0);  // num = 2^n
+  YACL_ENFORCE((T & (T - 1)) == 0);      // T = 2^m
+  YACL_ENFORCE(num >= T);                // num should be greater than T
+
+  const auto num_bits = yacl::math::Log2Ceil(num);
+  const auto T_bits = yacl::math::Log2Ceil(T);
+
+  const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
+
+  std::vector<size_t> perm(num);
+
+  const auto T_num = num / T;
+
+  SPDLOG_INFO("depth {}, T_num {}, total {}", depth, T_num, depth * T_num);
+
+  std::vector<std::vector<internal::ATy>> vec_a;
+  std::vector<std::vector<internal::ATy>> vec_b;
+  std::vector<std::vector<internal::ATy>> vec_aa;
+  std::vector<std::vector<internal::ATy>> vec_bb;
+
+  std::vector<std::vector<internal::ATy>> vec_a_T_all;
+  std::vector<std::vector<internal::ATy>> vec_b_T_all;
+  std::vector<std::vector<internal::ATy>> vec_aa_T_all;
+  std::vector<std::vector<internal::ATy>> vec_bb_T_all;
+  std::vector<std::vector<size_t>> vec_perm_T_all;
+
+  size_t total = T_num * depth;
+
+  const auto B = findB(T, total);
+  const auto ot_per_ast = yacl::math::Log2Ceil(T) * T * B;
+  const auto batch_size = yacl::math::DivCeil(param::kBatchOtSize, ot_per_ast);
+  size_t batch_num = yacl::math::DivCeil(total, batch_size);
+
+  for (size_t i = 0; i < batch_num; ++i) {
+    size_t remain = std::min(batch_size, total - i * batch_size);
+    std::vector<std::vector<internal::ATy>> cur_vec_a_T_all;
+    std::vector<std::vector<internal::ATy>> cur_vec_b_T_all;
+    std::vector<std::vector<internal::ATy>> cur_vec_aa_T_all;
+    std::vector<std::vector<internal::ATy>> cur_vec_bb_T_all;
+    auto cur_vec_perm_T_all = _DoubleASTSet_batch_basic_2k(
+        B, remain, T, cur_vec_a_T_all, cur_vec_b_T_all, cur_vec_aa_T_all,
+        cur_vec_bb_T_all);
+
+    for (size_t j = 0; j < remain; ++j) {
+      vec_a_T_all.emplace_back(std::move(cur_vec_a_T_all[j]));
+      vec_b_T_all.emplace_back(std::move(cur_vec_b_T_all[j]));
+      vec_aa_T_all.emplace_back(std::move(cur_vec_aa_T_all[j]));
+      vec_bb_T_all.emplace_back(std::move(cur_vec_bb_T_all[j]));
+      vec_perm_T_all.emplace_back(std::move(cur_vec_perm_T_all[j]));
+    }
+  }
+
+  std::vector<std::vector<internal::ATy>> vec_a_T(T_num);
+  std::vector<std::vector<internal::ATy>> vec_b_T(T_num);
+  std::vector<std::vector<internal::ATy>> vec_aa_T(T_num);
+  std::vector<std::vector<internal::ATy>> vec_bb_T(T_num);
+  std::vector<std::vector<size_t>> vec_perm_T(T_num);
+
+  for (size_t l = 0; l < depth; ++l) {
+    for (size_t i = 0; i < T_num; ++i) {
+      vec_perm_T[i] = std::move(vec_perm_T_all[l * T_num + i]);
+      vec_a_T[i] = std::move(vec_a_T_all[l * T_num + i]);
+      vec_b_T[i] = std::move(vec_b_T_all[l * T_num + i]);
+      vec_aa_T[i] = std::move(vec_aa_T_all[l * T_num + i]);
+      vec_bb_T[i] = std::move(vec_bb_T_all[l * T_num + i]);
+    }
+
+    if (l == 0) {
+      compose_vec_2k(l, vec_a_T, absl::MakeSpan(a));
+      compose_vec_2k(l, vec_b_T, absl::MakeSpan(b));
+      compose_vec_2k(l, vec_aa_T, absl::MakeSpan(aa));
+      compose_vec_2k(l, vec_bb_T, absl::MakeSpan(bb));
+      compose_perm_2k(l, vec_perm_T, absl::MakeSpan(perm));
+    } else {
+      std::vector<internal::ATy> _a(num, {0, 0});
+      std::vector<internal::ATy> _b(num, {0, 0});
+      std::vector<internal::ATy> _aa(num, {0, 0});
+      std::vector<internal::ATy> _bb(num, {0, 0});
+      std::vector<size_t> _perm(num);
+
+      compose_vec_2k(l, vec_a_T, absl::MakeSpan(_a));
+      compose_vec_2k(l, vec_b_T, absl::MakeSpan(_b));
+      compose_vec_2k(l, vec_aa_T, absl::MakeSpan(_aa));
+      compose_vec_2k(l, vec_bb_T, absl::MakeSpan(_bb));
+      compose_perm_2k(l, vec_perm_T, absl::MakeSpan(_perm));
+
+      internal::op::SubInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()),
+                         b.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
+                         _a.size() * 2));
+
+      internal::op::SubInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(bb.data()),
+                         bb.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aa.data()),
+                         _aa.size() * 2));
+      auto p = OpenAndDelayCheck(absl::MakeConstSpan(b));
+      auto pp = OpenAndDelayCheck(absl::MakeConstSpan(bb));
+
+      std::vector<internal::PTy> shuffle_p(num);
+      std::vector<internal::PTy> shuffle_pp(num);
+      std::vector<size_t> shuffle_perm(num);
+      for (size_t i = 0; i < num; ++i) {
+        shuffle_p[_perm[i]] = p[i];
+        shuffle_pp[_perm[i]] = pp[i];
+        shuffle_perm[i] = _perm[perm[i]];
+      }
+
+      std::vector<internal::ATy> shuffle_p_A(num);
+      std::vector<internal::ATy> shuffle_pp_A(num);
+
+      AuthSet(absl::MakeConstSpan(shuffle_p), absl::MakeSpan(shuffle_p_A));
+      AuthSet(absl::MakeConstSpan(shuffle_pp), absl::MakeSpan(shuffle_pp_A));
+      internal::op::AddInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()),
+                         _b.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_A.data()),
+                         shuffle_p_A.size() * 2));
+
+      internal::op::AddInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_bb.data()),
+                         _bb.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_A.data()),
+                         shuffle_pp_A.size() * 2));
+
+      AShareLineCombineDelayCheck(absl::MakeConstSpan(_b));
+      AShareLineCombineDelayCheck(absl::MakeConstSpan(_bb));
+
+      std::copy(_b.begin(), _b.end(), b.begin());
+      std::copy(_bb.begin(), _bb.end(), bb.begin());
+      std::swap(perm, shuffle_perm);
+    }
+  }
+
+  return perm;
+}
+
+void TrueCorrelation::_DoubleASTGet_2k(size_t T, absl::Span<internal::ATy> a,
+                                       absl::Span<internal::ATy> b,
+                                       absl::Span<internal::ATy> aa,
+                                       absl::Span<internal::ATy> bb) {
+  auto conn = ctx_->GetConnection();
+
+  const auto num = a.size();
+  YACL_ENFORCE(a.size() == b.size());
+  YACL_ENFORCE((num & (num - 1)) == 0);  // num = 2^n
+  YACL_ENFORCE((T & (T - 1)) == 0);      // T = 2^m
+  YACL_ENFORCE(num >= T);                // num should be greater than T
+
+  const auto num_bits = yacl::math::Log2Ceil(num);
+  const auto T_bits = yacl::math::Log2Ceil(T);
+
+  const auto depth = 2 * yacl::math::DivCeil(num_bits, T_bits) - 1;
+
+  const auto T_num = num / T;
+
+  SPDLOG_INFO("depth {}, T_num {}, total {}", depth, T_num, depth * T_num);
+
+  std::vector<std::vector<internal::ATy>> vec_a_T_all;
+  std::vector<std::vector<internal::ATy>> vec_b_T_all;
+  std::vector<std::vector<internal::ATy>> vec_aa_T_all;
+  std::vector<std::vector<internal::ATy>> vec_bb_T_all;
+
+  size_t total = T_num * depth;
+
+  const auto B = findB(T, total);
+  const auto ot_per_ast = yacl::math::Log2Ceil(T) * T * B;
+  const auto batch_size = yacl::math::DivCeil(param::kBatchOtSize, ot_per_ast);
+  size_t batch_num = yacl::math::DivCeil(total, batch_size);
+
+  for (size_t i = 0; i < batch_num; ++i) {
+    size_t remain = std::min(batch_size, total - i * batch_size);
+    std::vector<std::vector<internal::ATy>> cur_vec_a_T_all;
+    std::vector<std::vector<internal::ATy>> cur_vec_b_T_all;
+    std::vector<std::vector<internal::ATy>> cur_vec_aa_T_all;
+    std::vector<std::vector<internal::ATy>> cur_vec_bb_T_all;
+    _DoubleASTGet_batch_basic_2k(B, remain, T, cur_vec_a_T_all, cur_vec_b_T_all,
+                                 cur_vec_aa_T_all, cur_vec_bb_T_all);
+
+    for (size_t j = 0; j < remain; ++j) {
+      vec_a_T_all.emplace_back(std::move(cur_vec_a_T_all[j]));
+      vec_b_T_all.emplace_back(std::move(cur_vec_b_T_all[j]));
+      vec_aa_T_all.emplace_back(std::move(cur_vec_aa_T_all[j]));
+      vec_bb_T_all.emplace_back(std::move(cur_vec_bb_T_all[j]));
+    }
+  }
+
+  std::vector<std::vector<internal::ATy>> vec_a_T(T_num);
+  std::vector<std::vector<internal::ATy>> vec_b_T(T_num);
+  std::vector<std::vector<internal::ATy>> vec_aa_T(T_num);
+  std::vector<std::vector<internal::ATy>> vec_bb_T(T_num);
+
+  for (size_t l = 0; l < depth; ++l) {
+    // ASTGet_batch_basic_2k(T_num, T, vec_a_T, vec_b_T);
+    for (size_t i = 0; i < T_num; ++i) {
+      vec_a_T[i] = std::move(vec_a_T_all[l * T_num + i]);
+      vec_b_T[i] = std::move(vec_b_T_all[l * T_num + i]);
+      vec_aa_T[i] = std::move(vec_aa_T_all[l * T_num + i]);
+      vec_bb_T[i] = std::move(vec_bb_T_all[l * T_num + i]);
+    }
+    if (l == 0) {
+      compose_vec_2k(l, vec_a_T, absl::MakeSpan(a));
+      compose_vec_2k(l, vec_b_T, absl::MakeSpan(b));
+      compose_vec_2k(l, vec_aa_T, absl::MakeSpan(aa));
+      compose_vec_2k(l, vec_bb_T, absl::MakeSpan(bb));
+    } else {
+      std::vector<internal::ATy> _a(num, {0, 0});
+      std::vector<internal::ATy> _b(num, {0, 0});
+      std::vector<internal::ATy> _aa(num, {0, 0});
+      std::vector<internal::ATy> _bb(num, {0, 0});
+
+      compose_vec_2k(l, vec_a_T, absl::MakeSpan(_a));
+      compose_vec_2k(l, vec_b_T, absl::MakeSpan(_b));
+      compose_vec_2k(l, vec_aa_T, absl::MakeSpan(_aa));
+      compose_vec_2k(l, vec_bb_T, absl::MakeSpan(_bb));
+
+      internal::op::SubInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()),
+                         b.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
+                         _a.size() * 2));
+      internal::op::SubInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(bb.data()),
+                         bb.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aa.data()),
+                         _aa.size() * 2));
+
+      [[maybe_unused]] auto p = OpenAndDelayCheck(absl::MakeConstSpan(b));
+      [[maybe_unused]] auto pp = OpenAndDelayCheck(absl::MakeConstSpan(bb));
+
+      std::vector<internal::ATy> shuffle_p_A(num);
+      std::vector<internal::ATy> shuffle_pp_A(num);
+      AuthGet(absl::MakeSpan(shuffle_p_A));
+      AuthGet(absl::MakeSpan(shuffle_pp_A));
+
+      internal::op::AddInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()),
+                         _b.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_A.data()),
+                         shuffle_p_A.size() * 2));
+
+      internal::op::AddInplace(
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(_bb.data()),
+                         _bb.size() * 2),
+          absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_A.data()),
+                         shuffle_pp_A.size() * 2));
+
+      AShareLineCombineDelayCheck(absl::MakeConstSpan(_b));
+      AShareLineCombineDelayCheck(absl::MakeConstSpan(_bb));
+
+      std::copy(_b.begin(), _b.end(), b.begin());
+      std::copy(_bb.begin(), _bb.end(), bb.begin());
+    }
+  }
+}
+
 std::vector<size_t> TrueCorrelation::ASTSet_basic_2k(
     absl::Span<internal::ATy> a, absl::Span<internal::ATy> b) {
   const size_t num = a.size();
@@ -1279,6 +2754,239 @@ void TrueCorrelation::ASTGet_batch_basic_2k(
   vec_b.clear();
 
   ASTGet_merge(ext_num, num, vec_shuffle_a, vec_shuffle_b, vec_a, vec_b);
+}
+
+std::vector<std::vector<size_t>> TrueCorrelation::DoubleASTSet_batch_basic_2k(
+    size_t B, size_t num, size_t T,
+    std::vector<std::vector<internal::ATy>>& vec_a,
+    std::vector<std::vector<internal::ATy>>& vec_b,
+    std::vector<std::vector<internal::ATy>>& vec_aa,
+    std::vector<std::vector<internal::ATy>>& vec_bb) {
+  // YACL_ENFORCE((num & (num - 1)) == 0);
+  YACL_ENFORCE((T & (T - 1)) == 0);
+
+  auto ext = B;  // NB choose and cut
+  auto ext_num = num * ext;
+
+  SPDLOG_INFO("T is {}, num is {}, num extend is {}", T, num, ext_num);
+
+  std::vector<std::vector<size_t>> ext_perms;
+  for (size_t i = 0; i < ext_num; ++i) {
+    auto tmp_perm = GenPerm(T);
+    ext_perms.push_back(std::move(tmp_perm));
+  }
+
+  auto conn = ctx_->GetConnection();
+
+  std::vector<internal::ATy> r(ext_num * T);
+  RandomAuth(absl::MakeSpan(r));
+
+  std::vector<internal::ATy> rr(ext_num * T);
+  RandomAuth(absl::MakeSpan(rr));
+
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .BatchDoubleASTSend(conn, ext_num, T, ext_perms, r, vec_a, vec_b, rr,
+                          vec_aa, vec_bb);
+
+  auto seed = conn->SyncSeed();
+  auto shuffle = GenPerm(seed, ext_num);
+
+  std::vector<std::vector<internal::ATy>> vec_shuffle_a(ext_num);
+  std::vector<std::vector<internal::ATy>> vec_shuffle_b(ext_num);
+  std::vector<std::vector<internal::ATy>> vec_shuffle_aa(ext_num);
+  std::vector<std::vector<internal::ATy>> vec_shuffle_bb(ext_num);
+  std::vector<std::vector<size_t>> vec_shuffle_perms(ext_num);
+
+  for (size_t i = 0; i < ext_num; ++i) {
+    vec_shuffle_a[i] = std::move(vec_a[shuffle[i]]);
+    vec_shuffle_b[i] = std::move(vec_b[shuffle[i]]);
+    vec_shuffle_aa[i] = std::move(vec_aa[shuffle[i]]);
+    vec_shuffle_bb[i] = std::move(vec_bb[shuffle[i]]);
+    vec_shuffle_perms[i] = std::move(ext_perms[shuffle[i]]);
+  }
+
+  vec_a.clear();
+  vec_b.clear();
+  vec_aa.clear();
+  vec_bb.clear();
+  std::vector<std::vector<size_t>> perms;
+
+  SPDLOG_INFO("Enter DoubleAST Set");
+
+  DoubleASTSet_merge(ext_num, num, vec_shuffle_perms, vec_shuffle_a,
+                     vec_shuffle_b, vec_shuffle_aa, vec_shuffle_bb, perms,
+                     vec_a, vec_b, vec_aa, vec_bb);
+
+  return perms;
+}
+
+void TrueCorrelation::DoubleASTGet_batch_basic_2k(
+    size_t B, size_t num, size_t T,
+    std::vector<std::vector<internal::ATy>>& vec_a,
+    std::vector<std::vector<internal::ATy>>& vec_b,
+    std::vector<std::vector<internal::ATy>>& vec_aa,
+    std::vector<std::vector<internal::ATy>>& vec_bb) {
+  // YACL_ENFORCE((num & (num - 1)) == 0);
+  YACL_ENFORCE((T & (T - 1)) == 0);
+
+  auto ext = B;  // NB choose and cut
+  auto ext_num = num * ext;
+
+  SPDLOG_INFO("T is {}, num is {}, num extend is {}", T, num, ext_num);
+
+  auto conn = ctx_->GetConnection();
+
+  std::vector<internal::ATy> r(ext_num * T);
+  RandomAuth(absl::MakeSpan(r));
+
+  std::vector<internal::ATy> rr(ext_num * T);
+  RandomAuth(absl::MakeSpan(rr));
+
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .BatchDoubleASTRecv(conn, ext_num, T, r, vec_a, vec_b, rr, vec_aa,
+                          vec_bb);
+
+  auto seed = conn->SyncSeed();
+  auto shuffle = GenPerm(seed, ext_num);
+
+  std::vector<std::vector<internal::ATy>> vec_shuffle_a(ext_num);
+  std::vector<std::vector<internal::ATy>> vec_shuffle_b(ext_num);
+  std::vector<std::vector<internal::ATy>> vec_shuffle_aa(ext_num);
+  std::vector<std::vector<internal::ATy>> vec_shuffle_bb(ext_num);
+
+  for (size_t i = 0; i < ext_num; ++i) {
+    vec_shuffle_a[i] = std::move(vec_a[shuffle[i]]);
+    vec_shuffle_b[i] = std::move(vec_b[shuffle[i]]);
+    vec_shuffle_aa[i] = std::move(vec_aa[shuffle[i]]);
+    vec_shuffle_bb[i] = std::move(vec_bb[shuffle[i]]);
+  }
+
+  vec_a.clear();
+  vec_b.clear();
+  vec_aa.clear();
+  vec_bb.clear();
+
+  SPDLOG_INFO("Enter DoubleAST Get");
+
+  DoubleASTGet_merge(ext_num, num, vec_shuffle_a, vec_shuffle_b, vec_shuffle_aa,
+                     vec_shuffle_bb, vec_a, vec_b, vec_aa, vec_bb);
+}
+
+std::vector<std::vector<size_t>> TrueCorrelation::_DoubleASTSet_batch_basic_2k(
+    size_t B, size_t num, size_t T,
+    std::vector<std::vector<internal::ATy>>& vec_a,
+    std::vector<std::vector<internal::ATy>>& vec_b,
+    std::vector<std::vector<internal::ATy>>& vec_aa,
+    std::vector<std::vector<internal::ATy>>& vec_bb) {
+  // YACL_ENFORCE((num & (num - 1)) == 0);
+  YACL_ENFORCE((T & (T - 1)) == 0);
+
+  auto ext = B;  // NB choose and cut
+  auto ext_num = num * ext;
+
+  SPDLOG_INFO("T is {}, num is {}, num extend is {}", T, num, ext_num);
+
+  std::vector<std::vector<size_t>> ext_perms;
+  for (size_t i = 0; i < ext_num; ++i) {
+    auto tmp_perm = GenPerm(T);
+    ext_perms.push_back(std::move(tmp_perm));
+  }
+
+  auto conn = ctx_->GetConnection();
+
+  std::vector<internal::ATy> r(ext_num * T);
+  RandomAuth(absl::MakeSpan(r));
+
+  std::vector<internal::ATy> rr(ext_num * T);
+  RandomAuth(absl::MakeSpan(rr));
+
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .BatchDoubleASTSend(conn, ext_num, T, ext_perms, r, vec_a, vec_b, rr,
+                          vec_aa, vec_bb);
+
+  auto seed = conn->SyncSeed();
+  auto shuffle = GenPerm(seed, ext_num);
+
+  std::vector<std::vector<internal::ATy>> vec_shuffle_a(ext_num);
+  std::vector<std::vector<internal::ATy>> vec_shuffle_b(ext_num);
+  std::vector<std::vector<internal::ATy>> vec_shuffle_aa(ext_num);
+  std::vector<std::vector<internal::ATy>> vec_shuffle_bb(ext_num);
+  std::vector<std::vector<size_t>> vec_shuffle_perms(ext_num);
+
+  for (size_t i = 0; i < ext_num; ++i) {
+    vec_shuffle_a[i] = std::move(vec_a[shuffle[i]]);
+    vec_shuffle_b[i] = std::move(vec_b[shuffle[i]]);
+    vec_shuffle_aa[i] = std::move(vec_aa[shuffle[i]]);
+    vec_shuffle_bb[i] = std::move(vec_bb[shuffle[i]]);
+    vec_shuffle_perms[i] = std::move(ext_perms[shuffle[i]]);
+  }
+
+  vec_a.clear();
+  vec_b.clear();
+  vec_aa.clear();
+  vec_bb.clear();
+  std::vector<std::vector<size_t>> perms;
+
+  SPDLOG_INFO("Enter DoubleAST Set");
+
+  _DoubleASTSet_merge(ext_num, num, vec_shuffle_perms, vec_shuffle_a,
+                      vec_shuffle_b, vec_shuffle_aa, vec_shuffle_bb, perms,
+                      vec_a, vec_b, vec_aa, vec_bb);
+
+  return perms;
+}
+
+void TrueCorrelation::_DoubleASTGet_batch_basic_2k(
+    size_t B, size_t num, size_t T,
+    std::vector<std::vector<internal::ATy>>& vec_a,
+    std::vector<std::vector<internal::ATy>>& vec_b,
+    std::vector<std::vector<internal::ATy>>& vec_aa,
+    std::vector<std::vector<internal::ATy>>& vec_bb) {
+  // YACL_ENFORCE((num & (num - 1)) == 0);
+  YACL_ENFORCE((T & (T - 1)) == 0);
+
+  auto ext = B;  // NB choose and cut
+  auto ext_num = num * ext;
+
+  SPDLOG_INFO("T is {}, num is {}, num extend is {}", T, num, ext_num);
+
+  auto conn = ctx_->GetConnection();
+
+  std::vector<internal::ATy> r(ext_num * T);
+  RandomAuth(absl::MakeSpan(r));
+
+  std::vector<internal::ATy> rr(ext_num * T);
+  RandomAuth(absl::MakeSpan(rr));
+
+  ot::OtHelper(ot_sender_, ot_receiver_)
+      .BatchDoubleASTRecv(conn, ext_num, T, r, vec_a, vec_b, rr, vec_aa,
+                          vec_bb);
+
+  auto seed = conn->SyncSeed();
+  auto shuffle = GenPerm(seed, ext_num);
+
+  std::vector<std::vector<internal::ATy>> vec_shuffle_a(ext_num);
+  std::vector<std::vector<internal::ATy>> vec_shuffle_b(ext_num);
+  std::vector<std::vector<internal::ATy>> vec_shuffle_aa(ext_num);
+  std::vector<std::vector<internal::ATy>> vec_shuffle_bb(ext_num);
+
+  for (size_t i = 0; i < ext_num; ++i) {
+    vec_shuffle_a[i] = std::move(vec_a[shuffle[i]]);
+    vec_shuffle_b[i] = std::move(vec_b[shuffle[i]]);
+    vec_shuffle_aa[i] = std::move(vec_aa[shuffle[i]]);
+    vec_shuffle_bb[i] = std::move(vec_bb[shuffle[i]]);
+  }
+
+  vec_a.clear();
+  vec_b.clear();
+  vec_aa.clear();
+  vec_bb.clear();
+
+  SPDLOG_INFO("Enter DoubleAST Get");
+
+  _DoubleASTGet_merge(ext_num, num, vec_shuffle_a, vec_shuffle_b,
+                      vec_shuffle_aa, vec_shuffle_bb, vec_a, vec_b, vec_aa,
+                      vec_bb);
 }
 
 void TrueCorrelation::compose_vec_2k(
@@ -1587,4 +3295,849 @@ void TrueCorrelation::ASTGet_merge(
   //   YACL_ENFORCE(o[i] == internal::PTy(0));
   // }
 }
+
+void TrueCorrelation::DoubleASTSet_merge(
+    size_t in_num, size_t out_num, std::vector<std::vector<size_t>>& in_perms,
+    std::vector<std::vector<internal::ATy>>& in_vec_a,
+    std::vector<std::vector<internal::ATy>>& in_vec_b,
+    std::vector<std::vector<internal::ATy>>& in_vec_aa,
+    std::vector<std::vector<internal::ATy>>& in_vec_bb,
+    std::vector<std::vector<size_t>>& out_perms,
+    std::vector<std::vector<internal::ATy>>& out_vec_a,
+    std::vector<std::vector<internal::ATy>>& out_vec_b,
+    std::vector<std::vector<internal::ATy>>& out_vec_aa,
+    std::vector<std::vector<internal::ATy>>& out_vec_bb) {
+  auto conn = ctx_->GetConnection();
+
+  const size_t ext = in_num / out_num;
+  const size_t T = in_vec_a[0].size();
+
+  SPDLOG_INFO("T is {} , ext is {}", T, ext);
+
+  YACL_ENFORCE(in_num == in_perms.size());
+  YACL_ENFORCE(in_num == in_vec_a.size());
+  YACL_ENFORCE(in_num == in_vec_b.size());
+  YACL_ENFORCE(in_num == in_vec_aa.size());
+  YACL_ENFORCE(in_num == in_vec_bb.size());
+
+  YACL_ENFORCE(ext * out_num == in_num);
+
+  out_perms.clear();
+  out_vec_a.clear();
+  out_vec_b.clear();
+
+  out_vec_aa.clear();
+  out_vec_bb.clear();
+
+  std::vector<internal::ATy> out_extend_a(out_num * T);
+  std::vector<internal::ATy> out_extend_aa(out_num * T);
+  std::vector<internal::ATy> out_extend_b(out_num * T);
+  std::vector<internal::ATy> out_extend_bb(out_num * T);
+
+  for (size_t i = 0; i < out_num; ++i) {
+    out_perms.push_back(std::move(in_perms[i]));
+    std::copy(in_vec_a[i].begin(), in_vec_a[i].end(),
+              out_extend_a.begin() + i * T);
+    std::copy(in_vec_aa[i].begin(), in_vec_aa[i].end(),
+              out_extend_aa.begin() + i * T);
+    std::copy(in_vec_b[i].begin(), in_vec_b[i].end(),
+              out_extend_b.begin() + i * T);
+    std::copy(in_vec_bb[i].begin(), in_vec_bb[i].end(),
+              out_extend_bb.begin() + i * T);
+  }
+
+  std::vector<internal::ATy> _a(out_num * T);
+  std::vector<internal::ATy> _aa(out_num * T);
+  std::vector<internal::ATy> _b(out_num * T);
+  std::vector<internal::ATy> _bb(out_num * T);
+
+  auto vole_receiver_R =
+      std::make_shared<vole::SilentVoleAdapter>(conn, ot_receiver_);
+  vole_receiver_R->OneTimeSetup();
+
+  std::vector<internal::PTy> ext_tmp_a(8 * T * out_num * (ext), 0);
+  std::vector<internal::PTy> ext_tmp_b(8 * T * out_num * (ext), 0);
+  vole_receiver_R->rrecv(absl::MakeSpan(ext_tmp_a), absl::MakeSpan(ext_tmp_b));
+
+  auto vole_receiver_T =
+      std::make_shared<vole::SilentVoleAdapter>(conn, ot_receiver_);
+  vole_receiver_T->OneTimeSetup();
+
+  std::vector<internal::PTy> _ext_tmp_a(8 * T * out_num * (ext), 0);
+  std::vector<internal::PTy> _ext_tmp_b(8 * T * out_num * (ext), 0);
+  vole_receiver_T->rrecv(absl::MakeSpan(_ext_tmp_a),
+                         absl::MakeSpan(_ext_tmp_b));
+
+  for (size_t k = 1; k < ext; ++k) {
+    auto num = T * out_num;
+
+    // auto& a = out_extend_a;
+    // auto& aa = out_extend_aa;
+    auto& b = out_extend_b;
+    auto& bb = out_extend_bb;
+
+    for (size_t i = 0; i < out_num; ++i) {
+      std::copy(in_vec_a[k * out_num + i].begin(),
+                in_vec_a[k * out_num + i].end(), _a.begin() + i * T);
+      std::copy(in_vec_aa[k * out_num + i].begin(),
+                in_vec_aa[k * out_num + i].end(), _aa.begin() + i * T);
+      std::copy(in_vec_b[k * out_num + i].begin(),
+                in_vec_b[k * out_num + i].end(), _b.begin() + i * T);
+      std::copy(in_vec_bb[k * out_num + i].begin(),
+                in_vec_bb[k * out_num + i].end(), _bb.begin() + i * T);
+    }
+
+    // shuffle b and bb with (_a,_b) and (_aa,_bb)
+    // 1. compute b * R
+    // 2. compute _a * T and _b * T
+    // 3. shuffle b with (_a, _b)
+    // 4. shuffle b * R with (_a * T, _b * T)
+    // auto vole_receiver_R =
+    //     std::make_shared<vole::SilentVoleAdapter>(conn, ot_receiver_);
+    // vole_receiver_R->OneTimeSetup();
+
+    // std::vector<internal::PTy> tmp_a(8 * num, 0);
+    // std::vector<internal::PTy> tmp_b(8 * num, 0);
+    // vole_receiver_R->rrecv(absl::MakeSpan(tmp_a), absl::MakeSpan(tmp_b));
+    auto tmp_a = absl::MakeSpan(ext_tmp_a).subspan(8 * num * k, 8 * num);
+    auto tmp_b = absl::MakeSpan(ext_tmp_b).subspan(8 * num * k, 8 * num);
+
+    // auto bR = MulHelperSet(conn, absl::MakeSpan(b),
+    //                        absl::MakeSpan(tmp_a).subspan(0, 2 * num),
+    //                        absl::MakeSpan(tmp_b).subspan(0, 2 * num));
+
+    // auto bbR = MulHelperSet(conn, absl::MakeSpan(bb),
+    //                         absl::MakeSpan(tmp_a).subspan(2 * num, 2 * num),
+    //                         absl::MakeSpan(tmp_b).subspan(2 * num, 2 * num));
+
+    auto [bR, bbR] = MulHelperSet(
+        conn, absl::MakeSpan(b), absl::MakeSpan(tmp_a).subspan(0, 2 * num),
+        absl::MakeSpan(tmp_b).subspan(0, 2 * num), absl::MakeSpan(bb),
+        absl::MakeSpan(tmp_a).subspan(2 * num, 2 * num),
+        absl::MakeSpan(tmp_b).subspan(2 * num, 2 * num));
+
+    // auto vole_receiver_T =
+    //     std::make_shared<vole::SilentVoleAdapter>(conn, ot_receiver_);
+    // vole_receiver_T->OneTimeSetup();
+
+    // std::vector<internal::PTy> _tmp_a(8 * num, 0);
+    // std::vector<internal::PTy> _tmp_b(8 * num, 0);
+    // vole_receiver_T->rrecv(absl::MakeSpan(_tmp_a), absl::MakeSpan(_tmp_b));
+
+    auto _tmp_a = absl::MakeSpan(_ext_tmp_a).subspan(8 * num * k, 8 * num);
+    auto _tmp_b = absl::MakeSpan(_ext_tmp_b).subspan(8 * num * k, 8 * num);
+
+    std::vector<internal::ATy> _ab(2 * num);
+
+    std::copy(_a.begin(), _a.end(), _ab.begin());
+    std::copy(_b.begin(), _b.end(), _ab.begin() + num);
+
+    // auto _abT = MulHelperSet(conn, absl::MakeSpan(_ab),
+    //                          absl::MakeSpan(_tmp_a).subspan(0, 4 * num),
+    //                          absl::MakeSpan(_tmp_b).subspan(0, 4 * num));
+
+    std::vector<internal::ATy> _aabb(2 * num);
+
+    std::copy(_aa.begin(), _aa.end(), _aabb.begin());
+    std::copy(_bb.begin(), _bb.end(), _aabb.begin() + num);
+
+    // auto _aabbT =
+    //     MulHelperSet(conn, absl::MakeSpan(_aabb),
+    //                  absl::MakeSpan(_tmp_a).subspan(4 * num, 4 * num),
+    //                  absl::MakeSpan(_tmp_b).subspan(4 * num, 4 * num));
+
+    auto [_abT, _aabbT] = MulHelperSet(
+        conn, absl::MakeSpan(_ab), absl::MakeSpan(_tmp_a).subspan(0, 4 * num),
+        absl::MakeSpan(_tmp_b).subspan(0, 4 * num), absl::MakeSpan(_aabb),
+        absl::MakeSpan(_tmp_a).subspan(4 * num, 4 * num),
+        absl::MakeSpan(_tmp_b).subspan(4 * num, 4 * num));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()), num * 2));
+    auto p = OpenAndDelayCheck(absl::MakeConstSpan(b));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(bR.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_abT.data()), num * 2));
+
+    auto pR = OpenAndDelayCheck(absl::MakeConstSpan(bR));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(bb.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aa.data()), num * 2));
+    auto pp = OpenAndDelayCheck(absl::MakeConstSpan(bb));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(bbR.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aabbT.data()),
+                       num * 2));
+
+    auto ppR = OpenAndDelayCheck(absl::MakeConstSpan(bbR));
+
+    std::vector<internal::PTy> shuffle_p(num);
+    std::vector<internal::PTy> shuffle_pR(num);
+    std::vector<internal::PTy> shuffle_pp(num);
+    std::vector<internal::PTy> shuffle_ppR(num);
+    std::vector<std::vector<size_t>> shuffle_perm(out_num,
+                                                  std::vector<size_t>(T));
+    for (size_t j = 0; j < out_num; ++j) {
+      auto& perm = out_perms[j];
+      auto& _perm = in_perms[k * out_num + j];
+      auto& cur_shuffle_perm = shuffle_perm[j];
+      for (size_t i = 0; i < T; ++i) {
+        shuffle_p[j * T + _perm[i]] = p[j * T + i];
+        shuffle_pR[j * T + _perm[i]] = pR[j * T + i];
+        shuffle_pp[j * T + _perm[i]] = pp[j * T + i];
+        shuffle_ppR[j * T + _perm[i]] = ppR[j * T + i];
+        cur_shuffle_perm[i] = _perm[perm[i]];
+      }
+    }
+    std::vector<internal::ATy> shuffle_p_A(num);
+    AuthSet(absl::MakeConstSpan(shuffle_p), absl::MakeSpan(shuffle_p_A));
+
+    std::vector<internal::ATy> shuffle_p_AR(num);
+    AuthSet(absl::MakeConstSpan(shuffle_pR), absl::MakeSpan(shuffle_p_AR));
+
+    std::vector<internal::ATy> shuffle_pp_A(num);
+    AuthSet(absl::MakeConstSpan(shuffle_pp), absl::MakeSpan(shuffle_pp_A));
+
+    std::vector<internal::ATy> shuffle_pp_AR(num);
+    AuthSet(absl::MakeConstSpan(shuffle_ppR), absl::MakeSpan(shuffle_pp_AR));
+    internal::op::AddInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_A.data()),
+                       num * 2));
+
+    internal::op::AddInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_bb.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_A.data()),
+                       num * 2));
+
+    auto shuffle_bR = internal::op::Add(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_abT.data()) + num * 2,
+                       num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_AR.data()),
+                       num * 2));
+
+    auto shuffle_bbR = internal::op::Add(
+        absl::MakeSpan(
+            reinterpret_cast<internal::PTy*>(_aabbT.data()) + num * 2, num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_AR.data()),
+                       num * 2));
+
+    // auto shuffled_bR =
+    //     MulHelperSet(conn, absl::MakeSpan(_b),
+    //                  absl::MakeSpan(tmp_a).subspan(4 * num, 2 * num),
+    //                  absl::MakeSpan(tmp_b).subspan(4 * num, 2 * num));
+
+    // auto shuffled_bbR =
+    //     MulHelperSet(conn, absl::MakeSpan(_bb),
+    //                  absl::MakeSpan(tmp_a).subspan(6 * num, 2 * num),
+    //                  absl::MakeSpan(tmp_b).subspan(6 * num, 2 * num));
+
+    auto [shuffled_bR, shuffled_bbR] = MulHelperSet(
+        conn, absl::MakeSpan(_b),
+        absl::MakeSpan(tmp_a).subspan(4 * num, 2 * num),
+        absl::MakeSpan(tmp_b).subspan(4 * num, 2 * num), absl::MakeSpan(_bb),
+        absl::MakeSpan(tmp_a).subspan(6 * num, 2 * num),
+        absl::MakeSpan(tmp_b).subspan(6 * num, 2 * num));
+
+    auto check = internal::op::Sub(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffled_bR.data()),
+                       num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_bR.data()),
+                       num * 2));
+
+    auto check2 = internal::op::Sub(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffled_bbR.data()),
+                       num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_bbR.data()),
+                       num * 2));
+
+    auto hash = yacl::crypto::Sm3(
+        yacl::ByteContainerView(check.data(), 2 * num * sizeof(internal::PTy)));
+    double_ast_check_buff_.push_back(hash);
+
+    // auto remote_hash =
+    // conn->ExchangeWithCommit(yacl::ByteContainerView(hash));
+    // YACL_ENFORCE(yacl::ByteContainerView(hash) ==
+    //              yacl::ByteContainerView(remote_hash));
+
+    auto hash2 = yacl::crypto::Sm3(yacl::ByteContainerView(
+        check2.data(), 2 * num * sizeof(internal::PTy)));
+    double_ast_check_buff_.push_back(hash2);
+
+    // auto remote_hash2 =
+    //     conn->ExchangeWithCommit(yacl::ByteContainerView(hash2));
+    // YACL_ENFORCE(yacl::ByteContainerView(hash2) ==
+    //              yacl::ByteContainerView(remote_hash2));
+
+    std::copy(_b.begin(), _b.end(), b.begin());
+    std::copy(_bb.begin(), _bb.end(), bb.begin());
+    std::swap(out_perms, shuffle_perm);
+  }
+
+  for (size_t i = 0; i < out_num; ++i) {
+    out_vec_a.emplace_back(out_extend_a.begin() + i * T,
+                           out_extend_a.begin() + (i + 1) * T);
+    out_vec_b.emplace_back(out_extend_b.begin() + i * T,
+                           out_extend_b.begin() + (i + 1) * T);
+    out_vec_aa.emplace_back(out_extend_aa.begin() + i * T,
+                            out_extend_aa.begin() + (i + 1) * T);
+    out_vec_bb.emplace_back(out_extend_bb.begin() + i * T,
+                            out_extend_bb.begin() + (i + 1) * T);
+  }
+}
+
+void TrueCorrelation::DoubleASTGet_merge(
+    size_t in_num, size_t out_num,
+    std::vector<std::vector<internal::ATy>>& in_vec_a,
+    std::vector<std::vector<internal::ATy>>& in_vec_b,
+    std::vector<std::vector<internal::ATy>>& in_vec_aa,
+    std::vector<std::vector<internal::ATy>>& in_vec_bb,
+    std::vector<std::vector<internal::ATy>>& out_vec_a,
+    std::vector<std::vector<internal::ATy>>& out_vec_b,
+    std::vector<std::vector<internal::ATy>>& out_vec_aa,
+    std::vector<std::vector<internal::ATy>>& out_vec_bb) {
+  auto conn = ctx_->GetConnection();
+
+  const size_t ext = in_num / out_num;
+  const size_t T = in_vec_a[0].size();
+
+  SPDLOG_INFO("T is {} , ext is {}", T, ext);
+
+  YACL_ENFORCE(in_num == in_vec_a.size());
+  YACL_ENFORCE(in_num == in_vec_b.size());
+  YACL_ENFORCE(in_num == in_vec_aa.size());
+  YACL_ENFORCE(in_num == in_vec_bb.size());
+
+  YACL_ENFORCE(ext * out_num == in_num);
+
+  out_vec_a.clear();
+  out_vec_b.clear();
+  out_vec_aa.clear();
+  out_vec_bb.clear();
+
+  std::vector<internal::ATy> out_extend_a(out_num * T);
+  std::vector<internal::ATy> out_extend_aa(out_num * T);
+  std::vector<internal::ATy> out_extend_b(out_num * T);
+  std::vector<internal::ATy> out_extend_bb(out_num * T);
+
+  for (size_t i = 0; i < out_num; ++i) {
+    std::copy(in_vec_a[i].begin(), in_vec_a[i].end(),
+              out_extend_a.begin() + i * T);
+    std::copy(in_vec_aa[i].begin(), in_vec_aa[i].end(),
+              out_extend_aa.begin() + i * T);
+    std::copy(in_vec_b[i].begin(), in_vec_b[i].end(),
+              out_extend_b.begin() + i * T);
+    std::copy(in_vec_bb[i].begin(), in_vec_bb[i].end(),
+              out_extend_bb.begin() + i * T);
+  }
+
+  std::vector<internal::ATy> _a(out_num * T);
+  std::vector<internal::ATy> _aa(out_num * T);
+  std::vector<internal::ATy> _b(out_num * T);
+  std::vector<internal::ATy> _bb(out_num * T);
+
+  const auto FpR = internal::PTy::Rand();
+  const auto FpT = internal::PTy::Rand();
+
+  auto vole_sender_R =
+      std::make_shared<vole::SilentVoleAdapter>(conn, ot_sender_, FpR);
+  vole_sender_R->OneTimeSetup();
+
+  std::vector<internal::PTy> ext_tmp_c(8 * T * out_num * (ext), 0);
+  vole_sender_R->rsend(absl::MakeSpan(ext_tmp_c));
+
+  auto vole_sender_T =
+      std::make_shared<vole::SilentVoleAdapter>(conn, ot_sender_, FpT);
+  vole_sender_T->OneTimeSetup();
+
+  std::vector<internal::PTy> _ext_tmp_c(8 * T * out_num * (ext), 0);
+  vole_sender_T->rsend(absl::MakeSpan(_ext_tmp_c));
+
+  for (size_t k = 1; k < ext; ++k) {
+    auto num = T * out_num;
+
+    // auto& a = out_extend_a;
+    // auto& aa = out_extend_aa;
+    auto& b = out_extend_b;
+    auto& bb = out_extend_bb;
+
+    for (size_t i = 0; i < out_num; ++i) {
+      std::copy(in_vec_a[k * out_num + i].begin(),
+                in_vec_a[k * out_num + i].end(), _a.begin() + i * T);
+      std::copy(in_vec_aa[k * out_num + i].begin(),
+                in_vec_aa[k * out_num + i].end(), _aa.begin() + i * T);
+      std::copy(in_vec_b[k * out_num + i].begin(),
+                in_vec_b[k * out_num + i].end(), _b.begin() + i * T);
+      std::copy(in_vec_bb[k * out_num + i].begin(),
+                in_vec_bb[k * out_num + i].end(), _bb.begin() + i * T);
+    }
+
+    // shuffle b and bb with (_a,_b) and (_aa,_bb)
+    // 1. compute b * R
+    // 2. compute _a * T and _b * T
+    // 3. shuffle b with (_a, _b)
+    // 4. shuffle b * R with (_a * T, _b * T)
+    // const auto R = internal::PTy::Rand();
+    // const auto T = internal::PTy::Rand();
+
+    // auto vole_sender_R =
+    //     std::make_shared<vole::SilentVoleAdapter>(conn, ot_sender_, R);
+    // vole_sender_R->OneTimeSetup();
+
+    // std::vector<internal::PTy> tmp_c(8 * num, 0);
+    // vole_sender_R->rsend(absl::MakeSpan(tmp_c));
+
+    // auto bR = MulHelperGet(conn, R, absl::MakeSpan(b),
+    //                        absl::MakeSpan(tmp_c).subspan(0, 2 * num));
+
+    // auto bbR = MulHelperGet(conn, R, absl::MakeSpan(bb),
+    //                         absl::MakeSpan(tmp_c).subspan(2 * num, 2 * num));
+
+    auto tmp_c = absl::MakeSpan(ext_tmp_c).subspan(8 * num * k, 8 * num);
+
+    // auto bR = MulHelperGet(conn, FpR, absl::MakeSpan(b),
+    //                        absl::MakeSpan(tmp_c).subspan(0, 2 * num));
+
+    // auto bbR = MulHelperGet(conn, FpR, absl::MakeSpan(bb),
+    //                         absl::MakeSpan(tmp_c).subspan(2 * num, 2 * num));
+
+    auto [bR, bbR] = MulHelperGet(
+        conn, FpR, absl::MakeSpan(b), absl::MakeSpan(tmp_c).subspan(0, 2 * num),
+        absl::MakeSpan(bb), absl::MakeSpan(tmp_c).subspan(2 * num, 2 * num));
+
+    // auto vole_sender_T =
+    //     std::make_shared<vole::SilentVoleAdapter>(conn, ot_sender_, T);
+    // vole_sender_T->OneTimeSetup();
+
+    // std::vector<internal::PTy> _tmp_c(8 * num, 0);
+    // vole_sender_T->rsend(absl::MakeSpan(_tmp_c));
+
+    auto _tmp_c = absl::MakeSpan(_ext_tmp_c).subspan(8 * num * k, 8 * num);
+
+    std::vector<internal::ATy> _ab(2 * num);
+
+    std::copy(_a.begin(), _a.end(), _ab.begin());
+    std::copy(_b.begin(), _b.end(), _ab.begin() + num);
+
+    std::vector<internal::ATy> _aabb(2 * num);
+
+    std::copy(_aa.begin(), _aa.end(), _aabb.begin());
+    std::copy(_bb.begin(), _bb.end(), _aabb.begin() + num);
+
+    // auto _abT = MulHelperGet(conn, FpT, absl::MakeSpan(_ab),
+    //                          absl::MakeSpan(_tmp_c).subspan(0, 4 * num));
+
+    // auto _aabbT =
+    //     MulHelperGet(conn, FpT, absl::MakeSpan(_aabb),
+    //                  absl::MakeSpan(_tmp_c).subspan(4 * num, 4 * num));
+
+    auto [_abT, _aabbT] = MulHelperGet(
+        conn, FpT, absl::MakeSpan(_ab),
+        absl::MakeSpan(_tmp_c).subspan(0, 4 * num), absl::MakeSpan(_aabb),
+        absl::MakeSpan(_tmp_c).subspan(4 * num, 4 * num));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()), num * 2));
+    [[maybe_unused]] auto p = OpenAndDelayCheck(absl::MakeConstSpan(b));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(bR.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_abT.data()), num * 2));
+    [[maybe_unused]] auto pR = OpenAndDelayCheck(absl::MakeConstSpan(bR));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(bb.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aa.data()), num * 2));
+    [[maybe_unused]] auto pp = OpenAndDelayCheck(absl::MakeConstSpan(bb));
+
+    internal::op::SubInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(bbR.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aabbT.data()),
+                       num * 2));
+    [[maybe_unused]] auto ppR = OpenAndDelayCheck(absl::MakeConstSpan(bbR));
+
+    std::vector<internal::ATy> shuffle_p_A(num);
+    AuthGet(absl::MakeSpan(shuffle_p_A));
+
+    std::vector<internal::ATy> shuffle_p_AR(num);
+    AuthGet(absl::MakeSpan(shuffle_p_AR));
+
+    std::vector<internal::ATy> shuffle_pp_A(num);
+    AuthGet(absl::MakeSpan(shuffle_pp_A));
+
+    std::vector<internal::ATy> shuffle_pp_AR(num);
+    AuthGet(absl::MakeSpan(shuffle_pp_AR));
+
+    internal::op::AddInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_A.data()),
+                       num * 2));
+
+    internal::op::AddInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_bb.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_A.data()),
+                       num * 2));
+
+    auto shuffle_bR = internal::op::Add(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_abT.data()) + num * 2,
+                       num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_AR.data()),
+                       num * 2));
+
+    auto shuffle_bbR = internal::op::Add(
+        absl::MakeSpan(
+            reinterpret_cast<internal::PTy*>(_aabbT.data()) + num * 2, num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_AR.data()),
+                       num * 2));
+
+    // auto shuffled_bR =
+    //     MulHelperGet(conn, FpR, absl::MakeSpan(_b),
+    //                  absl::MakeSpan(tmp_c).subspan(4 * num, 2 * num));
+
+    // auto shuffled_bbR =
+    //     MulHelperGet(conn, FpR, absl::MakeSpan(_bb),
+    //                  absl::MakeSpan(tmp_c).subspan(6 * num, 2 * num));
+
+    auto [shuffled_bR, shuffled_bbR] = MulHelperGet(
+        conn, FpR, absl::MakeSpan(_b),
+        absl::MakeSpan(tmp_c).subspan(4 * num, 2 * num), absl::MakeSpan(_bb),
+        absl::MakeSpan(tmp_c).subspan(6 * num, 2 * num));
+
+    auto check = internal::op::Sub(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_bR.data()),
+                       num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffled_bR.data()),
+                       num * 2));
+
+    auto check2 = internal::op::Sub(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_bbR.data()),
+                       num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffled_bbR.data()),
+                       num * 2));
+
+    auto hash = yacl::crypto::Sm3(
+        yacl::ByteContainerView(check.data(), 2 * num * sizeof(internal::PTy)));
+    double_ast_check_buff_.push_back(hash);
+
+    // auto remote_hash =
+    // conn->ExchangeWithCommit(yacl::ByteContainerView(hash));
+    // YACL_ENFORCE(yacl::ByteContainerView(hash) ==
+    //              yacl::ByteContainerView(remote_hash));
+
+    auto hash2 = yacl::crypto::Sm3(yacl::ByteContainerView(
+        check2.data(), 2 * num * sizeof(internal::PTy)));
+    double_ast_check_buff_.push_back(hash2);
+
+    // auto remote_hash2 =
+    //     conn->ExchangeWithCommit(yacl::ByteContainerView(hash2));
+    // YACL_ENFORCE(yacl::ByteContainerView(hash2) ==
+    //              yacl::ByteContainerView(remote_hash2));
+
+    std::copy(_b.begin(), _b.end(), b.begin());
+    std::copy(_bb.begin(), _bb.end(), bb.begin());
+  }
+
+  for (size_t i = 0; i < out_num; ++i) {
+    out_vec_a.emplace_back(out_extend_a.begin() + i * T,
+                           out_extend_a.begin() + (i + 1) * T);
+    out_vec_b.emplace_back(out_extend_b.begin() + i * T,
+                           out_extend_b.begin() + (i + 1) * T);
+    out_vec_aa.emplace_back(out_extend_aa.begin() + i * T,
+                            out_extend_aa.begin() + (i + 1) * T);
+    out_vec_bb.emplace_back(out_extend_bb.begin() + i * T,
+                            out_extend_bb.begin() + (i + 1) * T);
+  }
+}
+
+void TrueCorrelation::_DoubleASTSet_merge(
+    size_t in_num, size_t out_num, std::vector<std::vector<size_t>>& in_perms,
+    std::vector<std::vector<internal::ATy>>& in_vec_a,
+    std::vector<std::vector<internal::ATy>>& in_vec_b,
+    std::vector<std::vector<internal::ATy>>& in_vec_aa,
+    std::vector<std::vector<internal::ATy>>& in_vec_bb,
+    std::vector<std::vector<size_t>>& out_perms,
+    std::vector<std::vector<internal::ATy>>& out_vec_a,
+    std::vector<std::vector<internal::ATy>>& out_vec_b,
+    std::vector<std::vector<internal::ATy>>& out_vec_aa,
+    std::vector<std::vector<internal::ATy>>& out_vec_bb) {
+  auto conn = ctx_->GetConnection();
+
+  const size_t ext = in_num / out_num;
+  const size_t T = in_vec_a[0].size();
+
+  SPDLOG_INFO("T is {} , ext is {}", T, ext);
+
+  YACL_ENFORCE(in_num == in_perms.size());
+  YACL_ENFORCE(in_num == in_vec_a.size());
+  YACL_ENFORCE(in_num == in_vec_b.size());
+  YACL_ENFORCE(in_num == in_vec_aa.size());
+  YACL_ENFORCE(in_num == in_vec_bb.size());
+
+  YACL_ENFORCE(ext * out_num == in_num);
+
+  out_perms.clear();
+  out_vec_a.clear();
+  out_vec_b.clear();
+
+  out_vec_aa.clear();
+  out_vec_bb.clear();
+
+  std::vector<internal::ATy> out_extend_a(out_num * T);
+  std::vector<internal::ATy> out_extend_aa(out_num * T);
+  std::vector<internal::ATy> out_extend_b(out_num * T);
+  std::vector<internal::ATy> out_extend_bb(out_num * T);
+
+  for (size_t i = 0; i < out_num; ++i) {
+    out_perms.push_back(std::move(in_perms[i]));
+    std::copy(in_vec_a[i].begin(), in_vec_a[i].end(),
+              out_extend_a.begin() + i * T);
+    std::copy(in_vec_aa[i].begin(), in_vec_aa[i].end(),
+              out_extend_aa.begin() + i * T);
+    std::copy(in_vec_b[i].begin(), in_vec_b[i].end(),
+              out_extend_b.begin() + i * T);
+    std::copy(in_vec_bb[i].begin(), in_vec_bb[i].end(),
+              out_extend_bb.begin() + i * T);
+  }
+
+  std::vector<internal::ATy> _a(out_num * T);
+  std::vector<internal::ATy> _aa(out_num * T);
+  std::vector<internal::ATy> _b(out_num * T);
+  std::vector<internal::ATy> _bb(out_num * T);
+
+  std::vector<internal::ATy> reveal_buf(out_num * T * 2);
+  auto reveal_span = absl::MakeSpan(reveal_buf);
+
+  for (size_t k = 1; k < ext; ++k) {
+    auto& b = out_extend_b;
+    auto& bb = out_extend_bb;
+    const auto num = out_num * T;
+
+    for (size_t i = 0; i < out_num; ++i) {
+      std::copy(in_vec_a[k * out_num + i].begin(),
+                in_vec_a[k * out_num + i].end(), _a.begin() + i * T);
+      std::copy(in_vec_aa[k * out_num + i].begin(),
+                in_vec_aa[k * out_num + i].end(), _aa.begin() + i * T);
+      std::copy(in_vec_b[k * out_num + i].begin(),
+                in_vec_b[k * out_num + i].end(), _b.begin() + i * T);
+      std::copy(in_vec_bb[k * out_num + i].begin(),
+                in_vec_bb[k * out_num + i].end(), _bb.begin() + i * T);
+    }
+
+    auto tmp_span0 = reveal_span.subspan(0, out_num * T);
+    auto tmp_span1 = reveal_span.subspan(out_num * T, out_num * T);
+
+    internal::op::Sub(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()),
+                       b.size() * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
+                       _a.size() * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(tmp_span0.data()),
+                       out_num * T * 2));
+
+    internal::op::Sub(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(bb.data()),
+                       bb.size() * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aa.data()),
+                       _aa.size() * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(tmp_span1.data()),
+                       out_num * T * 2));
+
+    auto reveal = OpenAndDelayCheck(reveal_span);
+
+    for (size_t j = 0; j < out_num; ++j) {
+      // std::vector<internal::ATy>& a = out_vec_a[j];
+      // std::vector<internal::ATy>& b = out_vec_b[j];
+      std::vector<size_t>& perm = out_perms[j];
+
+      // std::vector<internal::ATy>& _a = in_vec_a[k * out_num + j];
+      // std::vector<internal::ATy>& _b = in_vec_b[k * out_num + j];
+      std::vector<size_t>& _perm = in_perms[k * out_num + j];
+
+      auto tmp_span0 = absl::MakeSpan(reveal).subspan(j * T, T);
+      auto tmp_span1 = absl::MakeSpan(reveal).subspan(j * T + out_num * T, T);
+
+      std::vector<internal::PTy> shuffle_p(T);
+      std::vector<internal::PTy> shuffle_pp(T);
+
+      std::vector<size_t> shuffle_perm(T);
+      for (size_t i = 0; i < T; ++i) {
+        shuffle_p[_perm[i]] = tmp_span0[i];
+        shuffle_pp[_perm[i]] = tmp_span1[i];
+        shuffle_perm[i] = _perm[perm[i]];
+      }
+
+      std::swap(perm, shuffle_perm);
+      std::copy(shuffle_p.begin(), shuffle_p.end(), tmp_span0.begin());
+      std::copy(shuffle_pp.begin(), shuffle_pp.end(), tmp_span1.begin());
+    }
+
+    std::vector<internal::ATy> reveal_shuffle(out_num * T * 2);
+    AuthSet(absl::MakeConstSpan(reveal), absl::MakeSpan(reveal_shuffle));
+
+    auto shuffle_p_A = absl::MakeSpan(reveal_shuffle).subspan(0, out_num * T);
+    auto shuffle_pp_A =
+        absl::MakeSpan(reveal_shuffle).subspan(out_num * T, out_num * T);
+
+    internal::op::AddInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_A.data()),
+                       num * 2));
+
+    internal::op::AddInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_bb.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_A.data()),
+                       num * 2));
+
+    std::copy(_b.begin(), _b.end(), b.begin());
+    std::copy(_bb.begin(), _bb.end(), bb.begin());
+
+    AShareLineCombineDelayCheck(absl::MakeConstSpan(b));
+    AShareLineCombineDelayCheck(absl::MakeConstSpan(bb));
+  }
+
+  for (size_t i = 0; i < out_num; ++i) {
+    out_vec_a.emplace_back(out_extend_a.begin() + i * T,
+                           out_extend_a.begin() + (i + 1) * T);
+    out_vec_b.emplace_back(out_extend_b.begin() + i * T,
+                           out_extend_b.begin() + (i + 1) * T);
+    out_vec_aa.emplace_back(out_extend_aa.begin() + i * T,
+                            out_extend_aa.begin() + (i + 1) * T);
+    out_vec_bb.emplace_back(out_extend_bb.begin() + i * T,
+                            out_extend_bb.begin() + (i + 1) * T);
+  }
+
+  SPDLOG_INFO("Check Over");
+}
+
+void TrueCorrelation::_DoubleASTGet_merge(
+    size_t in_num, size_t out_num,
+    std::vector<std::vector<internal::ATy>>& in_vec_a,
+    std::vector<std::vector<internal::ATy>>& in_vec_b,
+    std::vector<std::vector<internal::ATy>>& in_vec_aa,
+    std::vector<std::vector<internal::ATy>>& in_vec_bb,
+    std::vector<std::vector<internal::ATy>>& out_vec_a,
+    std::vector<std::vector<internal::ATy>>& out_vec_b,
+    std::vector<std::vector<internal::ATy>>& out_vec_aa,
+    std::vector<std::vector<internal::ATy>>& out_vec_bb) {
+  auto conn = ctx_->GetConnection();
+
+  const size_t ext = in_num / out_num;
+  const size_t T = in_vec_a[0].size();
+
+  SPDLOG_INFO("T is {} , ext is {}", T, ext);
+
+  YACL_ENFORCE(in_num == in_vec_a.size());
+  YACL_ENFORCE(in_num == in_vec_b.size());
+  YACL_ENFORCE(in_num == in_vec_aa.size());
+  YACL_ENFORCE(in_num == in_vec_bb.size());
+
+  YACL_ENFORCE(ext * out_num == in_num);
+
+  out_vec_a.clear();
+  out_vec_b.clear();
+  out_vec_aa.clear();
+  out_vec_bb.clear();
+
+  std::vector<internal::ATy> out_extend_a(out_num * T);
+  std::vector<internal::ATy> out_extend_aa(out_num * T);
+  std::vector<internal::ATy> out_extend_b(out_num * T);
+  std::vector<internal::ATy> out_extend_bb(out_num * T);
+
+  for (size_t i = 0; i < out_num; ++i) {
+    std::copy(in_vec_a[i].begin(), in_vec_a[i].end(),
+              out_extend_a.begin() + i * T);
+    std::copy(in_vec_aa[i].begin(), in_vec_aa[i].end(),
+              out_extend_aa.begin() + i * T);
+    std::copy(in_vec_b[i].begin(), in_vec_b[i].end(),
+              out_extend_b.begin() + i * T);
+    std::copy(in_vec_bb[i].begin(), in_vec_bb[i].end(),
+              out_extend_bb.begin() + i * T);
+  }
+
+  std::vector<internal::ATy> _a(out_num * T);
+  std::vector<internal::ATy> _aa(out_num * T);
+  std::vector<internal::ATy> _b(out_num * T);
+  std::vector<internal::ATy> _bb(out_num * T);
+
+  std::vector<internal::ATy> reveal_buf(2 * out_num * T);
+  auto reveal_span = absl::MakeSpan(reveal_buf);
+
+  for (size_t k = 1; k < ext; ++k) {
+    auto& b = out_extend_b;
+    auto& bb = out_extend_bb;
+    const auto num = out_num * T;
+
+    for (size_t i = 0; i < out_num; ++i) {
+      std::copy(in_vec_a[k * out_num + i].begin(),
+                in_vec_a[k * out_num + i].end(), _a.begin() + i * T);
+      std::copy(in_vec_aa[k * out_num + i].begin(),
+                in_vec_aa[k * out_num + i].end(), _aa.begin() + i * T);
+      std::copy(in_vec_b[k * out_num + i].begin(),
+                in_vec_b[k * out_num + i].end(), _b.begin() + i * T);
+      std::copy(in_vec_bb[k * out_num + i].begin(),
+                in_vec_bb[k * out_num + i].end(), _bb.begin() + i * T);
+    }
+
+    auto tmp_span0 = reveal_span.subspan(0, out_num * T);
+    auto tmp_span1 = reveal_span.subspan(out_num * T, out_num * T);
+
+    internal::op::Sub(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(b.data()),
+                       b.size() * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_a.data()),
+                       _a.size() * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(tmp_span0.data()),
+                       out_num * T * 2));
+
+    internal::op::Sub(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(bb.data()),
+                       bb.size() * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_aa.data()),
+                       _aa.size() * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(tmp_span1.data()),
+                       out_num * T * 2));
+
+    [[maybe_unused]] auto reveal = OpenAndDelayCheck(reveal_span);
+
+    std::vector<internal::ATy> reveal_shuffle(2 * out_num * T);
+    AuthGet(absl::MakeSpan(reveal_shuffle));
+
+    auto shuffle_p_A = absl::MakeSpan(reveal_shuffle).subspan(0, out_num * T);
+    auto shuffle_pp_A =
+        absl::MakeSpan(reveal_shuffle).subspan(out_num * T, out_num * T);
+
+    internal::op::AddInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_b.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_p_A.data()),
+                       num * 2));
+
+    internal::op::AddInplace(
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(_bb.data()), num * 2),
+        absl::MakeSpan(reinterpret_cast<internal::PTy*>(shuffle_pp_A.data()),
+                       num * 2));
+
+    std::copy(_b.begin(), _b.end(), b.begin());
+    std::copy(_bb.begin(), _bb.end(), bb.begin());
+
+    AShareLineCombineDelayCheck(absl::MakeConstSpan(b));
+    AShareLineCombineDelayCheck(absl::MakeConstSpan(bb));
+  }
+
+  for (size_t i = 0; i < out_num; ++i) {
+    out_vec_a.emplace_back(out_extend_a.begin() + i * T,
+                           out_extend_a.begin() + (i + 1) * T);
+    out_vec_b.emplace_back(out_extend_b.begin() + i * T,
+                           out_extend_b.begin() + (i + 1) * T);
+    out_vec_aa.emplace_back(out_extend_aa.begin() + i * T,
+                            out_extend_aa.begin() + (i + 1) * T);
+    out_vec_bb.emplace_back(out_extend_bb.begin() + i * T,
+                            out_extend_bb.begin() + (i + 1) * T);
+  }
+}
+
 }  // namespace mosac

@@ -21,6 +21,9 @@ struct MpParam {
   size_t require_ot_num_;
   std::vector<size_t> indexes_;
 
+  // default ctor
+  MpParam() {}
+
   MpParam(size_t mp_vole_size, size_t noise_num) {
     YACL_ENFORCE(mp_vole_size >= 2 * noise_num);
     mp_vole_size_ = mp_vole_size;
@@ -56,7 +59,7 @@ void MpCotSend(const std::shared_ptr<Connection>& conn,
                const yc::OtSendStore& send_ot, const MpParam& param,
                absl::Span<uint128_t> output);
 
-void MpCotSend(const std::shared_ptr<Connection>& conn,
+void MpCotRecv(const std::shared_ptr<Connection>& conn,
                const yc::OtRecvStore& recv_ot, const MpParam& param,
                absl::Span<uint128_t> output);
 

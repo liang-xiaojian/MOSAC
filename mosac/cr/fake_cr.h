@@ -17,7 +17,11 @@ class FakeCorrelation : public Correlation {
 
   internal::PTy GetKey() const override { return key_; }
 
+  internal::PTy GetVoleKey() const override { return vole_key_; }
+
   void SetKey(internal::PTy key) override { key_ = key; }
+
+  void SetVoleKey(internal::PTy key) override { vole_key_ = key; }
 
   void OneTimeSetup() override { ; }
 
@@ -29,6 +33,11 @@ class FakeCorrelation : public Correlation {
   void RandomSet(absl::Span<internal::ATy> out) override;
   void RandomGet(absl::Span<internal::ATy> out) override;
   void RandomAuth(absl::Span<internal::ATy> out) override;
+
+  // entry
+  void RandomVoleSet(absl::Span<internal::PTy> a,
+                     absl::Span<internal::PTy> b) override;
+  void RandomVoleGet(absl::Span<internal::PTy> c) override;
 
   // entry
   void ShuffleSet(absl::Span<const size_t> perm,
@@ -58,10 +67,37 @@ class FakeCorrelation : public Correlation {
   void ASTGet(absl::Span<internal::ATy> a,
               absl::Span<internal::ATy> b) override;
 
+  // entry
+  std::vector<size_t> DoubleASTSet(absl::Span<internal::ATy> a,
+                                   absl::Span<internal::ATy> b,
+                                   absl::Span<internal::ATy> aa,
+                                   absl::Span<internal::ATy> bb) override;
+  void DoubleASTGet(absl::Span<internal::ATy> a, absl::Span<internal::ATy> b,
+                    absl::Span<internal::ATy> aa,
+                    absl::Span<internal::ATy> bb) override;
+
   std::vector<size_t> ASTSet_2k(size_t T, absl::Span<internal::ATy> a,
                                 absl::Span<internal::ATy> b) override;
   void ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
                  absl::Span<internal::ATy> b) override;
+
+  std::vector<size_t> DoubleASTSet_2k(size_t T, absl::Span<internal::ATy> a,
+                                      absl::Span<internal::ATy> b,
+                                      absl::Span<internal::ATy> aa,
+                                      absl::Span<internal::ATy> bb) override;
+  void DoubleASTGet_2k(size_t T, absl::Span<internal::ATy> a,
+                       absl::Span<internal::ATy> b,
+                       absl::Span<internal::ATy> aa,
+                       absl::Span<internal::ATy> bb) override;
+
+  std::vector<size_t> _DoubleASTSet_2k(size_t T, absl::Span<internal::ATy> a,
+                                       absl::Span<internal::ATy> b,
+                                       absl::Span<internal::ATy> aa,
+                                       absl::Span<internal::ATy> bb) override;
+  void _DoubleASTGet_2k(size_t T, absl::Span<internal::ATy> a,
+                        absl::Span<internal::ATy> b,
+                        absl::Span<internal::ATy> aa,
+                        absl::Span<internal::ATy> bb) override;
 
   // entry
   internal::ATy NMul(absl::Span<internal::ATy> r) override;

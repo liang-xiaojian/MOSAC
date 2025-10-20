@@ -119,10 +119,16 @@ mosac_cc_test(
 )
 
 mosac_cc_library(
+    name = "code_interface",
+    hdrs = ["code_interface.h"],
+)
+
+mosac_cc_library(
     name = "linear_code",
     hdrs = ["linear_code.h"],
     copts = AES_COPT_FLAGS,
     deps = [
+        ":code_interface",
         "//mosac/ss:ss_type",
         "//mosac/utils:field",
         "//mosac/utils:vec_op",
@@ -142,6 +148,38 @@ mosac_cc_test(
     srcs = ["linear_code_test.cc"],
     deps = [
         ":linear_code",
+        "//mosac/ss:ss_type",
+        "//mosac/utils:vec_op",
+    ],
+)
+
+
+mosac_cc_library(
+    name = "ea_code",
+    hdrs = ["ea_code.h"],
+    copts = AES_COPT_FLAGS,
+    deps = [
+        ":code_interface",
+        ":linear_code",
+        "//mosac/ss:ss_type",
+        "//mosac/utils:field",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/base:int128",
+        "@yacl//yacl/crypto/tools:rp",
+        "@yacl//yacl/utils:thread_pool",
+    ]  + select({
+        "@platforms//cpu:aarch64": [
+            "@com_github_dltcollab_sse2neon//:sse2neon",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+mosac_cc_test(
+    name = "ea_code_test",
+    srcs = ["ea_code_test.cc"],
+    deps = [
+        ":ea_code",
         "//mosac/ss:ss_type",
         "//mosac/utils:vec_op",
     ],
@@ -208,6 +246,30 @@ mosac_cc_test(
 )
 
 mosac_cc_library(
+    name = "silent_vole",
+    srcs = [
+        "silent_vole.cc",
+    ],
+    hdrs = [
+        "silent_vole.h",
+    ],
+    deps = [
+        ":ea_code",
+        ":mpfss",
+        ":ot_adapter",
+        ":ot_helper",
+        "//mosac/context:state",
+        "//mosac/ss:ss_type",
+        "//mosac/utils:field",
+        "//mosac/utils:vec_op",
+        "@yacl//yacl/base:byte_container_view",
+        "@yacl//yacl/crypto/primitives/ot:ot_store",
+        "@yacl//yacl/crypto/utils:rand",
+        "@yacl//yacl/math:gadget",
+    ],
+)
+
+mosac_cc_library(
     name = "vole_adapter",
     srcs = [
         "vole_adapter.cc",
@@ -217,6 +279,7 @@ mosac_cc_library(
     ],
     deps = [
         ":vole",
+        ":silent_vole",
         ":linear_code",
         ":ot_adapter",
         ":ot_helper",

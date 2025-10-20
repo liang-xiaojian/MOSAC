@@ -136,7 +136,7 @@ class kFp128 {
   }
 
   kFp128(uint256_t val) {
-    auto tmp = (val & Prime128) + (val >> 127);
+    uint256_t tmp = (val & uint256_t(Prime128)) + (val >> 127);
     tmp = (tmp & Prime128) + (tmp >> 127);
 
     uint128_t low = static_cast<uint128_t>(tmp & Prime128);
@@ -158,7 +158,7 @@ class kFp128 {
   kFp128 operator*(const kFp128 &rhs) const {
     uint256_t l = static_cast<uint256_t>(val_);
     uint256_t r = static_cast<uint256_t>(rhs.val_);
-    return kFp128(l * r);
+    return kFp128(uint256_t(l * r));
   }
 
   kFp128 operator/(const kFp128 &rhs) const { return (*this) * Inv(rhs); }

@@ -14,7 +14,8 @@ namespace mosac {
 class TrueCorrelation : public Correlation {
  private:
   bool setup_ot_{false};
-  bool setup_vole_{false};  // useless
+  bool setup_vole_{false};        // useless
+  bool setup_extra_vole_{false};  // extra vole
 
  public:
   // OT adapter
@@ -23,9 +24,13 @@ class TrueCorrelation : public Correlation {
   // Vole adapter
   std::shared_ptr<vole::VoleAdapter> vole_sender_;
   std::shared_ptr<vole::VoleAdapter> vole_receiver_;
+  // Extra Vole adapter
+  std::shared_ptr<vole::VoleAdapter> extra_vole_sender_;
+  std::shared_ptr<vole::VoleAdapter> extra_vole_receiver_;
 
   // delay check
   std::vector<internal::PTy> delay_check_buff_;
+  std::vector<std::array<uint8_t, 32>> double_ast_check_buff_;
   std::vector<std::vector<internal::PTy>> val_delay_check_buff_;
   std::vector<std::vector<internal::PTy>> mac_delay_check_buff_;
 
@@ -89,14 +94,45 @@ class TrueCorrelation : public Correlation {
     setup_vole_ = true;
   }
 
+  void InitExtraVoleAdapter() {
+    YACL_ENFORCE(setup_extra_vole_ == false);
+    if (setup_ot_ == false) InitOtAdapter();
+
+    auto conn = ctx_->GetConnection();
+    if (ctx_->GetRank() == 0) {
+      extra_vole_sender_ = std::make_shared<vole::WolverineVoleAdapter>(
+          conn, ot_sender_, vole_key_);
+      extra_vole_sender_->OneTimeSetup();
+
+      extra_vole_receiver_ =
+          std::make_shared<vole::WolverineVoleAdapter>(conn, ot_receiver_);
+      extra_vole_receiver_->OneTimeSetup();
+    } else {
+      extra_vole_receiver_ =
+          std::make_shared<vole::WolverineVoleAdapter>(conn, ot_receiver_);
+      extra_vole_receiver_->OneTimeSetup();
+
+      extra_vole_sender_ = std::make_shared<vole::WolverineVoleAdapter>(
+          conn, ot_sender_, vole_key_);
+      extra_vole_sender_->OneTimeSetup();
+    }
+    setup_extra_vole_ = true;
+  }
+
   void OneTimeSetup() override {
-    if (setup_ot_ == true) return;
-    InitOtAdapter();
-    if (setup_vole_ == true) return;
-    InitVoleAdapter();
+    if (setup_ot_ == false) {
+      InitOtAdapter();
+    }
+    if (setup_vole_ == false) {
+      InitVoleAdapter();
+    }
+    if (setup_extra_vole_ == false) {
+      InitExtraVoleAdapter();
+    }
   }
 
   internal::PTy GetKey() const override { return key_; }
+  internal::PTy GetVoleKey() const override { return vole_key_; }
 
   void SetKey(internal::PTy key) override {
     key_ = key;
@@ -104,6 +140,14 @@ class TrueCorrelation : public Correlation {
     setup_vole_ = false;  // set it as false
     InitVoleAdapter();
     YACL_ENFORCE(setup_vole_ == true);
+  }
+
+  void SetVoleKey(internal::PTy key) override {
+    vole_key_ = key;
+
+    setup_extra_vole_ = false;  // set it as false
+    InitExtraVoleAdapter();
+    YACL_ENFORCE(setup_extra_vole_ == true);
   }
 
   // entry
@@ -114,6 +158,11 @@ class TrueCorrelation : public Correlation {
   void RandomSet(absl::Span<internal::ATy> out) override;
   void RandomGet(absl::Span<internal::ATy> out) override;
   void RandomAuth(absl::Span<internal::ATy> out) override;
+
+  // entry
+  void RandomVoleSet(absl::Span<internal::PTy> a,
+                     absl::Span<internal::PTy> b) override;
+  void RandomVoleGet(absl::Span<internal::PTy> c) override;
 
   // entry
   void ShuffleSet(absl::Span<const size_t> perm,
@@ -142,11 +191,40 @@ class TrueCorrelation : public Correlation {
   void ASTGet(absl::Span<internal::ATy> a,
               absl::Span<internal::ATy> b) override;
 
+  // entry
+  std::vector<size_t> DoubleASTSet(absl::Span<internal::ATy> a,
+                                   absl::Span<internal::ATy> b,
+                                   absl::Span<internal::ATy> aa,
+                                   absl::Span<internal::ATy> bb) override;
+  void DoubleASTGet(absl::Span<internal::ATy> a, absl::Span<internal::ATy> b,
+                    absl::Span<internal::ATy> aa,
+                    absl::Span<internal::ATy> bb) override;
+
   std::vector<size_t> ASTSet_2k(size_t T, absl::Span<internal::ATy> a,
                                 absl::Span<internal::ATy> b) override;
 
   void ASTGet_2k(size_t T, absl::Span<internal::ATy> a,
                  absl::Span<internal::ATy> b) override;
+
+  std::vector<size_t> DoubleASTSet_2k(size_t T, absl::Span<internal::ATy> a,
+                                      absl::Span<internal::ATy> b,
+                                      absl::Span<internal::ATy> aa,
+                                      absl::Span<internal::ATy> bb) override;
+
+  void DoubleASTGet_2k(size_t T, absl::Span<internal::ATy> a,
+                       absl::Span<internal::ATy> b,
+                       absl::Span<internal::ATy> aa,
+                       absl::Span<internal::ATy> bb) override;
+
+  std::vector<size_t> _DoubleASTSet_2k(size_t T, absl::Span<internal::ATy> a,
+                                       absl::Span<internal::ATy> b,
+                                       absl::Span<internal::ATy> aa,
+                                       absl::Span<internal::ATy> bb) override;
+
+  void _DoubleASTGet_2k(size_t T, absl::Span<internal::ATy> a,
+                        absl::Span<internal::ATy> b,
+                        absl::Span<internal::ATy> aa,
+                        absl::Span<internal::ATy> bb) override;
 
   // entry
   internal::ATy NMul(absl::Span<internal::ATy> r) override;
@@ -191,6 +269,34 @@ class TrueCorrelation : public Correlation {
                              std::vector<std::vector<internal::ATy>>& vec_a,
                              std::vector<std::vector<internal::ATy>>& vec_b);
 
+  std::vector<std::vector<size_t>> DoubleASTSet_batch_basic_2k(
+      size_t B, size_t num, size_t T,
+      std::vector<std::vector<internal::ATy>>& vec_a,
+      std::vector<std::vector<internal::ATy>>& vec_b,
+      std::vector<std::vector<internal::ATy>>& vec_aa,
+      std::vector<std::vector<internal::ATy>>& vec_bb);
+
+  void DoubleASTGet_batch_basic_2k(
+      size_t B, size_t num, size_t T,
+      std::vector<std::vector<internal::ATy>>& vec_a,
+      std::vector<std::vector<internal::ATy>>& vec_b,
+      std::vector<std::vector<internal::ATy>>& vec_aa,
+      std::vector<std::vector<internal::ATy>>& vec_bb);
+
+  std::vector<std::vector<size_t>> _DoubleASTSet_batch_basic_2k(
+      size_t B, size_t num, size_t T,
+      std::vector<std::vector<internal::ATy>>& vec_a,
+      std::vector<std::vector<internal::ATy>>& vec_b,
+      std::vector<std::vector<internal::ATy>>& vec_aa,
+      std::vector<std::vector<internal::ATy>>& vec_bb);
+
+  void _DoubleASTGet_batch_basic_2k(
+      size_t B, size_t num, size_t T,
+      std::vector<std::vector<internal::ATy>>& vec_a,
+      std::vector<std::vector<internal::ATy>>& vec_b,
+      std::vector<std::vector<internal::ATy>>& vec_aa,
+      std::vector<std::vector<internal::ATy>>& vec_bb);
+
   void compose_vec_2k(size_t i,
                       const std::vector<std::vector<internal::ATy>>& vecs,
                       absl::Span<internal::ATy> out);
@@ -211,6 +317,50 @@ class TrueCorrelation : public Correlation {
                     std::vector<std::vector<internal::ATy>>& in_vec_b,
                     std::vector<std::vector<internal::ATy>>& out_vec_a,
                     std::vector<std::vector<internal::ATy>>& out_vec_b);
+
+  void DoubleASTSet_merge(size_t in_num, size_t out_num,
+                          std::vector<std::vector<size_t>>& in_perms,
+                          std::vector<std::vector<internal::ATy>>& in_vec_a,
+                          std::vector<std::vector<internal::ATy>>& in_vec_b,
+                          std::vector<std::vector<internal::ATy>>& in_vec_aa,
+                          std::vector<std::vector<internal::ATy>>& in_vec_bb,
+                          std::vector<std::vector<size_t>>& out_perms,
+                          std::vector<std::vector<internal::ATy>>& out_vec_a,
+                          std::vector<std::vector<internal::ATy>>& out_vec_b,
+                          std::vector<std::vector<internal::ATy>>& out_vec_aa,
+                          std::vector<std::vector<internal::ATy>>& out_vec_bb);
+
+  void DoubleASTGet_merge(size_t in_num, size_t out_num,
+                          std::vector<std::vector<internal::ATy>>& in_vec_a,
+                          std::vector<std::vector<internal::ATy>>& in_vec_b,
+                          std::vector<std::vector<internal::ATy>>& in_vec_aa,
+                          std::vector<std::vector<internal::ATy>>& in_vec_bb,
+                          std::vector<std::vector<internal::ATy>>& out_vec_a,
+                          std::vector<std::vector<internal::ATy>>& out_vec_b,
+                          std::vector<std::vector<internal::ATy>>& out_vec_aa,
+                          std::vector<std::vector<internal::ATy>>& out_vec_bb);
+
+  void _DoubleASTSet_merge(size_t in_num, size_t out_num,
+                           std::vector<std::vector<size_t>>& in_perms,
+                           std::vector<std::vector<internal::ATy>>& in_vec_a,
+                           std::vector<std::vector<internal::ATy>>& in_vec_b,
+                           std::vector<std::vector<internal::ATy>>& in_vec_aa,
+                           std::vector<std::vector<internal::ATy>>& in_vec_bb,
+                           std::vector<std::vector<size_t>>& out_perms,
+                           std::vector<std::vector<internal::ATy>>& out_vec_a,
+                           std::vector<std::vector<internal::ATy>>& out_vec_b,
+                           std::vector<std::vector<internal::ATy>>& out_vec_aa,
+                           std::vector<std::vector<internal::ATy>>& out_vec_bb);
+
+  void _DoubleASTGet_merge(size_t in_num, size_t out_num,
+                           std::vector<std::vector<internal::ATy>>& in_vec_a,
+                           std::vector<std::vector<internal::ATy>>& in_vec_b,
+                           std::vector<std::vector<internal::ATy>>& in_vec_aa,
+                           std::vector<std::vector<internal::ATy>>& in_vec_bb,
+                           std::vector<std::vector<internal::ATy>>& out_vec_a,
+                           std::vector<std::vector<internal::ATy>>& out_vec_b,
+                           std::vector<std::vector<internal::ATy>>& out_vec_aa,
+                           std::vector<std::vector<internal::ATy>>& out_vec_bb);
 
   bool DelayCheck() override;
 
