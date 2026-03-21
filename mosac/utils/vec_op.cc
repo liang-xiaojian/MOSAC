@@ -1,3 +1,20 @@
+// Copyright 2026 Ant International, Ant Group Co., Ltd.
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//   http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// 
+// Author (Xiaojian Liang)
+
+
 #include "mosac/utils/vec_op.h"
 
 #include "field.h"
@@ -67,7 +84,7 @@ void op64::Sqrt(absl::Span<const kFp64> in, absl::Span<kFp64> out) {
 
   yacl::parallel_for(0, in.size(), [&](uint64_t bg, uint64_t ed) {
     std::transform(in.cbegin() + bg, in.cbegin() + ed, out.begin() + bg,
-                   [&](const kFp64 &val) {
+                   [&](const kFp64& val) {
                      auto tmp = yacl::math::MPInt(0);
                      yacl::math::MPInt::PowMod(yacl::math::MPInt(val.GetVal()),
                                                power, mod, &tmp);
@@ -139,37 +156,37 @@ void op64::Inv(absl::Span<const kFp64> in, absl::Span<kFp64> out) {
 }
 
 void op64::Ones(absl::Span<kFp64> out) {
-  auto tmp = absl::Span(reinterpret_cast<uint64_t *>(out.data()), out.size());
-  std::for_each(tmp.begin(), tmp.end(), [](uint64_t &val) { val = 1; });
+  auto tmp = absl::Span(reinterpret_cast<uint64_t*>(out.data()), out.size());
+  std::for_each(tmp.begin(), tmp.end(), [](uint64_t& val) { val = 1; });
 }
 
 void op64::Zeros(absl::Span<kFp64> out) {
-  auto tmp = absl::Span(reinterpret_cast<uint64_t *>(out.data()), out.size());
-  std::for_each(tmp.begin(), tmp.end(), [](uint64_t &val) { val = 0; });
+  auto tmp = absl::Span(reinterpret_cast<uint64_t*>(out.data()), out.size());
+  std::for_each(tmp.begin(), tmp.end(), [](uint64_t& val) { val = 0; });
 }
 
 void op64::Rand(absl::Span<kFp64> out) {
   const uint64_t prime = kFp64::GetPrime();
 
   auto out64 =
-      absl::MakeSpan(reinterpret_cast<uint64_t *>(out.data()), out.size());
+      absl::MakeSpan(reinterpret_cast<uint64_t*>(out.data()), out.size());
 
   auto prg = yacl::crypto::Prg<uint8_t>(yacl::crypto::SecureRandU128());
   prg.Fill(out64);
 
-  for (auto &e : out64) {
+  for (auto& e : out64) {
     e %= prime;
   }
 }
 
-void op64::Rand(yacl::crypto::Prg<uint8_t> &prg, absl::Span<kFp64> out) {
+void op64::Rand(yacl::crypto::Prg<uint8_t>& prg, absl::Span<kFp64> out) {
   const uint64_t prime = kFp64::GetPrime();
 
   auto out64 =
-      absl::MakeSpan(reinterpret_cast<uint64_t *>(out.data()), out.size());
+      absl::MakeSpan(reinterpret_cast<uint64_t*>(out.data()), out.size());
   prg.Fill(out64);
 
-  for (auto &e : out64) {
+  for (auto& e : out64) {
     e %= prime;
   }
 }
@@ -257,7 +274,7 @@ void op128::Sqrt(absl::Span<const kFp128> in, absl::Span<kFp128> out) {
 
   yacl::parallel_for(0, in.size(), [&](uint64_t bg, uint64_t ed) {
     std::transform(in.cbegin() + bg, in.cbegin() + ed, out.begin() + bg,
-                   [&](const kFp128 &val) {
+                   [&](const kFp128& val) {
                      auto tmp = yacl::math::MPInt(0);
                      yacl::math::MPInt::PowMod(yacl::math::MPInt(val.GetVal()),
                                                power, mod, &tmp);
@@ -338,20 +355,20 @@ void op128::Inv(absl::Span<const kFp128> in, absl::Span<kFp128> out) {
 
 void op128::Ones(absl::Span<kFp128> out) {
   const size_t size = out.size();
-  auto tmp = absl::Span(reinterpret_cast<uint128_t *>(out.data()), size);
+  auto tmp = absl::Span(reinterpret_cast<uint128_t*>(out.data()), size);
   yacl::parallel_for(0, size, 4096, [&](uint64_t bg, uint64_t ed) {
     std::for_each(tmp.begin() + bg, tmp.begin() + ed,
-                  [](uint128_t &val) { val = 1; });
+                  [](uint128_t& val) { val = 1; });
   });
   // std::for_each(tmp.begin(), tmp.end(), [](uint128_t &val) { val = 0; });
 }
 
 void op128::Zeros(absl::Span<kFp128> out) {
   const size_t size = out.size();
-  auto tmp = absl::Span(reinterpret_cast<uint128_t *>(out.data()), size);
+  auto tmp = absl::Span(reinterpret_cast<uint128_t*>(out.data()), size);
   yacl::parallel_for(0, size, 4096, [&](uint64_t bg, uint64_t ed) {
     std::for_each(tmp.begin() + bg, tmp.begin() + ed,
-                  [](uint128_t &val) { val = 0; });
+                  [](uint128_t& val) { val = 0; });
   });
   // std::for_each(tmp.begin(), tmp.end(), [](uint128_t &val) { val = 0; });
 }
@@ -360,13 +377,13 @@ void op128::Rand(absl::Span<kFp128> out) {
   const uint128_t prime = kFp128::GetPrime();
   const size_t size = out.size();
 
-  auto out128 = absl::MakeSpan(reinterpret_cast<uint128_t *>(out.data()), size);
+  auto out128 = absl::MakeSpan(reinterpret_cast<uint128_t*>(out.data()), size);
   auto prg = yacl::crypto::Prg<uint8_t>(yacl::crypto::SecureRandU128());
   prg.Fill(out128);
 
   yacl::parallel_for(0, size, 4096, [&](uint64_t bg, uint64_t ed) {
     std::for_each(out128.begin() + bg, out128.begin() + ed,
-                  [&prime](uint128_t &val) { val %= prime; });
+                  [&prime](uint128_t& val) { val %= prime; });
   });
 
   // for (auto &e : out128) {
@@ -374,16 +391,16 @@ void op128::Rand(absl::Span<kFp128> out) {
   // }
 }
 
-void op128::Rand(yacl::crypto::Prg<uint8_t> &prg, absl::Span<kFp128> out) {
+void op128::Rand(yacl::crypto::Prg<uint8_t>& prg, absl::Span<kFp128> out) {
   const uint128_t prime = kFp128::GetPrime();
   const size_t size = out.size();
 
-  auto out128 = absl::MakeSpan(reinterpret_cast<uint128_t *>(out.data()), size);
+  auto out128 = absl::MakeSpan(reinterpret_cast<uint128_t*>(out.data()), size);
   prg.Fill(out128);
 
   yacl::parallel_for(0, size, 4096, [&](uint64_t bg, uint64_t ed) {
     std::for_each(out128.begin() + bg, out128.begin() + ed,
-                  [&prime](uint128_t &val) { val %= prime; });
+                  [&prime](uint128_t& val) { val %= prime; });
   });
 
   // for (auto &e : out128) {
@@ -402,7 +419,7 @@ std::vector<size_t> GenPerm(uint32_t num) {
   return perm;
 }
 
-std::vector<size_t> GenPerm(yacl::crypto::Prg<uint8_t> &prg, uint32_t num) {
+std::vector<size_t> GenPerm(yacl::crypto::Prg<uint8_t>& prg, uint32_t num) {
   std::vector<size_t> perm(num);
   for (size_t i = 0; i < num; ++i) {
     perm[i] = i;

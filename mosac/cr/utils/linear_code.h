@@ -1,3 +1,20 @@
+// Copyright 2026 Ant International, Ant Group Co., Ltd.
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//   http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// 
+// Author (Xiaojian Liang)
+
+
 #pragma once
 
 #include <algorithm>
@@ -64,9 +81,9 @@ class LocalLinearCode : LinearCodeInterface {
     alignas(16) std::array<uint128_t, tmp_size> tmp;
 
     auto mask_tmp =
-        _mm_loadu_si128((reinterpret_cast<__m128i *>(&extend_mask_)));
-    auto k_tmp = _mm_loadu_si128((reinterpret_cast<__m128i *>(&extend_k_)));
-    auto cmp_tmp = _mm_loadu_si128((reinterpret_cast<__m128i *>(&extend_cmp_)));
+        _mm_loadu_si128((reinterpret_cast<__m128i*>(&extend_mask_)));
+    auto k_tmp = _mm_loadu_si128((reinterpret_cast<__m128i*>(&extend_k_)));
+    auto cmp_tmp = _mm_loadu_si128((reinterpret_cast<__m128i*>(&extend_cmp_)));
 
     for (uint32_t i = 0; i < out.size(); i += kLcBatchSize) {
       const uint32_t limit =
@@ -74,16 +91,16 @@ class LocalLinearCode : LinearCodeInterface {
       const uint32_t block_num = (limit * d + 3) / 4;
 
       for (uint32_t j = 0; j < block_num; ++j) {
-        _mm_store_si128(reinterpret_cast<__m128i *>(&tmp[j]),
+        _mm_store_si128(reinterpret_cast<__m128i*>(&tmp[j]),
                         _mm_set_epi32(i, 0, j, 0));
       }
 
-      rp_.GenInplace(absl::MakeSpan(reinterpret_cast<uint128_t *>(tmp.data()),
+      rp_.GenInplace(absl::MakeSpan(reinterpret_cast<uint128_t*>(tmp.data()),
                                     block_num));  // kBatchSize * 10 / 4
 
       // SIMD
       for (uint32_t j = 0; j < block_num; ++j) {
-        auto idx128 = _mm_load_si128(reinterpret_cast<__m128i *>(&tmp[j]));
+        auto idx128 = _mm_load_si128(reinterpret_cast<__m128i*>(&tmp[j]));
         idx128 = _mm_and_si128(idx128, mask_tmp);
         // compare idx128 and cmp_tmp
         // return 0xFFFF if true, return 0x0000 otherwise.
@@ -92,11 +109,11 @@ class LocalLinearCode : LinearCodeInterface {
         // return 0x0000 otherwise
         sub = _mm_and_si128(sub, k_tmp);
         idx128 = _mm_sub_epi32(idx128, sub);
-        _mm_store_si128(reinterpret_cast<__m128i *>(&tmp[j]), idx128);
+        _mm_store_si128(reinterpret_cast<__m128i*>(&tmp[j]), idx128);
       }
 
       // core
-      auto *ptr = reinterpret_cast<uint32_t *>(tmp.data());
+      auto* ptr = reinterpret_cast<uint32_t*>(tmp.data());
       for (uint32_t j = 0; j < limit; ++j) {
         auto tmp = out[i + j];
         for (uint32_t k = 0; k < d; ++k, ++ptr) {
@@ -121,9 +138,9 @@ class LocalLinearCode : LinearCodeInterface {
     alignas(16) std::array<uint128_t, tmp_size> tmp;
 
     auto mask_tmp =
-        _mm_loadu_si128((reinterpret_cast<__m128i *>(&extend_mask_)));
-    auto k_tmp = _mm_loadu_si128((reinterpret_cast<__m128i *>(&extend_k_)));
-    auto cmp_tmp = _mm_loadu_si128((reinterpret_cast<__m128i *>(&extend_cmp_)));
+        _mm_loadu_si128((reinterpret_cast<__m128i*>(&extend_mask_)));
+    auto k_tmp = _mm_loadu_si128((reinterpret_cast<__m128i*>(&extend_k_)));
+    auto cmp_tmp = _mm_loadu_si128((reinterpret_cast<__m128i*>(&extend_cmp_)));
 
     for (uint32_t i = 0; i < out_size; i += kLcBatchSize) {
       const uint32_t limit =
@@ -131,16 +148,16 @@ class LocalLinearCode : LinearCodeInterface {
       const uint32_t block_num = (limit * d + 3) / 4;
 
       for (uint32_t j = 0; j < block_num; ++j) {
-        _mm_store_si128(reinterpret_cast<__m128i *>(&tmp[j]),
+        _mm_store_si128(reinterpret_cast<__m128i*>(&tmp[j]),
                         _mm_set_epi32(i, 0, j, 0));
       }
 
-      rp_.GenInplace(absl::MakeSpan(reinterpret_cast<uint128_t *>(tmp.data()),
+      rp_.GenInplace(absl::MakeSpan(reinterpret_cast<uint128_t*>(tmp.data()),
                                     block_num));  // kBatchSize * 10 / 4
 
       // SIMD
       for (uint32_t j = 0; j < block_num; ++j) {
-        auto idx128 = _mm_load_si128(reinterpret_cast<__m128i *>(&tmp[j]));
+        auto idx128 = _mm_load_si128(reinterpret_cast<__m128i*>(&tmp[j]));
         idx128 = _mm_and_si128(idx128, mask_tmp);
         // compare idx128 and cmp_tmp
         // return 0xFFFF if true, return 0x0000 otherwise.
@@ -149,11 +166,11 @@ class LocalLinearCode : LinearCodeInterface {
         // return 0x0000 otherwise
         sub = _mm_and_si128(sub, k_tmp);
         idx128 = _mm_sub_epi32(idx128, sub);
-        _mm_store_si128(reinterpret_cast<__m128i *>(&tmp[j]), idx128);
+        _mm_store_si128(reinterpret_cast<__m128i*>(&tmp[j]), idx128);
       }
 
       // core
-      auto *ptr = reinterpret_cast<uint32_t *>(tmp.data());
+      auto* ptr = reinterpret_cast<uint32_t*>(tmp.data());
       for (uint32_t j = 0; j < limit; ++j) {
         auto tmp0 = out0[i + j];
         auto tmp1 = out1[i + j];

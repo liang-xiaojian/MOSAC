@@ -1,27 +1,43 @@
+# Copyright 2026 Ant International, Ant Group Co., Ltd.
+# 
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# 
+# Author (Xiaojian Liang)
+
 load("//bazel:mosac.bzl", "mosac_cc_binary", "mosac_cc_library")
 
 package(default_visibility = ["//visibility:public"])
 
 mosac_cc_library(
     name = "macro",
-    hdrs = ["macro.h"]
+    hdrs = ["macro.h"],
 )
 
 mosac_cc_binary(
     name = "memory_example",
     srcs = ["memory_example.cc"],
     deps = [
+        ":macro",
         "//mosac/context:register",
         "//mosac/ss:protocol",
         "//mosac/utils:test_util",
         "//mosac/utils:vec_op",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@yacl//yacl/base:int128",
         "@yacl//yacl/link",
-        "@yacl//yacl/utils:serialize",
         "@yacl//yacl/utils:parallel",
-        "@llvm-project//llvm:Support",
-        "@com_google_absl//absl/strings",
-        ":macro",
+        "@yacl//yacl/utils:serialize",
     ],
 )
 
@@ -29,36 +45,35 @@ mosac_cc_binary(
     name = "socket_example",
     srcs = ["socket_example.cc"],
     deps = [
+        ":macro",
         "//mosac/context:register",
         "//mosac/ss:protocol",
         "//mosac/utils:test_util",
         "//mosac/utils:vec_op",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@yacl//yacl/base:int128",
         "@yacl//yacl/link",
-        "@yacl//yacl/utils:serialize",
         "@yacl//yacl/utils:parallel",
-        "@llvm-project//llvm:Support",
-        "@com_google_absl//absl/strings",
-        ":macro",
+        "@yacl//yacl/utils:serialize",
     ],
 )
-
 
 mosac_cc_binary(
     name = "opt_memory_example",
     srcs = ["opt_memory_example.cc"],
     deps = [
+        ":macro",
         "//mosac/context:register",
         "//mosac/ss:protocol",
         "//mosac/utils:test_util",
         "//mosac/utils:vec_op",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@yacl//yacl/base:int128",
         "@yacl//yacl/link",
-        "@yacl//yacl/utils:serialize",
         "@yacl//yacl/utils:parallel",
-        "@llvm-project//llvm:Support",
-        "@com_google_absl//absl/strings",
-        ":macro",
+        "@yacl//yacl/utils:serialize",
     ],
 )
 
@@ -66,17 +81,17 @@ mosac_cc_binary(
     name = "opt_socket_example",
     srcs = ["opt_socket_example.cc"],
     deps = [
+        ":macro",
         "//mosac/context:register",
         "//mosac/ss:protocol",
         "//mosac/utils:test_util",
         "//mosac/utils:vec_op",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@yacl//yacl/base:int128",
         "@yacl//yacl/link",
-        "@yacl//yacl/utils:serialize",
         "@yacl//yacl/utils:parallel",
-        "@llvm-project//llvm:Support",
-        "@com_google_absl//absl/strings",
-        ":macro",
+        "@yacl//yacl/utils:serialize",
     ],
 )
 
@@ -84,17 +99,17 @@ mosac_cc_binary(
     name = "NDSS_offline_example",
     srcs = ["NDSS_offline_example.cc"],
     deps = [
+        ":macro",
         "//mosac/context:register",
         "//mosac/ss:protocol",
         "//mosac/utils:test_util",
         "//mosac/utils:vec_op",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@yacl//yacl/base:int128",
         "@yacl//yacl/link",
-        "@yacl//yacl/utils:serialize",
         "@yacl//yacl/utils:parallel",
-        "@llvm-project//llvm:Support",
-        "@com_google_absl//absl/strings",
-        ":macro",
+        "@yacl//yacl/utils:serialize",
     ],
 )
 
@@ -102,17 +117,17 @@ mosac_cc_binary(
     name = "NDSS_online_example",
     srcs = ["NDSS_online_example.cc"],
     deps = [
+        ":macro",
         "//mosac/context:register",
         "//mosac/ss:protocol",
         "//mosac/utils:test_util",
         "//mosac/utils:vec_op",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@yacl//yacl/base:int128",
         "@yacl//yacl/link",
-        "@yacl//yacl/utils:serialize",
         "@yacl//yacl/utils:parallel",
-        "@llvm-project//llvm:Support",
-        "@com_google_absl//absl/strings",
-        ":macro",
+        "@yacl//yacl/utils:serialize",
     ],
 )
 
@@ -120,17 +135,17 @@ mosac_cc_binary(
     name = "AST2k_offline_example",
     srcs = ["AST2k_offline_example.cc"],
     deps = [
+        ":macro",
         "//mosac/context:register",
         "//mosac/ss:protocol",
         "//mosac/utils:test_util",
         "//mosac/utils:vec_op",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@yacl//yacl/base:int128",
         "@yacl//yacl/link",
-        "@yacl//yacl/utils:serialize",
         "@yacl//yacl/utils:parallel",
-        "@llvm-project//llvm:Support",
-        "@com_google_absl//absl/strings",
-        ":macro",
+        "@yacl//yacl/utils:serialize",
     ],
 )
 
@@ -138,17 +153,17 @@ mosac_cc_binary(
     name = "DoubleAST2k_offline_example",
     srcs = ["DoubleAST2k_offline_example.cc"],
     deps = [
+        ":macro",
         "//mosac/context:register",
         "//mosac/ss:protocol",
         "//mosac/utils:test_util",
         "//mosac/utils:vec_op",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@yacl//yacl/base:int128",
         "@yacl//yacl/link",
-        "@yacl//yacl/utils:serialize",
         "@yacl//yacl/utils:parallel",
-        "@llvm-project//llvm:Support",
-        "@com_google_absl//absl/strings",
-        ":macro",
+        "@yacl//yacl/utils:serialize",
     ],
 )
 
@@ -156,17 +171,17 @@ mosac_cc_binary(
     name = "opt_DoubleAST2k_offline_example",
     srcs = ["opt_DoubleAST2k_offline_example.cc"],
     deps = [
+        ":macro",
         "//mosac/context:register",
         "//mosac/ss:protocol",
         "//mosac/utils:test_util",
         "//mosac/utils:vec_op",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@yacl//yacl/base:int128",
         "@yacl//yacl/link",
-        "@yacl//yacl/utils:serialize",
         "@yacl//yacl/utils:parallel",
-        "@llvm-project//llvm:Support",
-        "@com_google_absl//absl/strings",
-        ":macro",
+        "@yacl//yacl/utils:serialize",
     ],
 )
 
@@ -174,17 +189,17 @@ mosac_cc_binary(
     name = "NMul_offline_example",
     srcs = ["NMul_offline_example.cc"],
     deps = [
+        ":macro",
         "//mosac/context:register",
         "//mosac/ss:protocol",
         "//mosac/utils:test_util",
         "//mosac/utils:vec_op",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@yacl//yacl/base:int128",
         "@yacl//yacl/link",
-        "@yacl//yacl/utils:serialize",
         "@yacl//yacl/utils:parallel",
-        "@llvm-project//llvm:Support",
-        "@com_google_absl//absl/strings",
-        ":macro",
+        "@yacl//yacl/utils:serialize",
     ],
 )
 
@@ -192,16 +207,16 @@ mosac_cc_binary(
     name = "AShare_example",
     srcs = ["AShare_example.cc"],
     deps = [
+        ":macro",
         "//mosac/context:register",
         "//mosac/ss:protocol",
         "//mosac/utils:test_util",
         "//mosac/utils:vec_op",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@yacl//yacl/base:int128",
         "@yacl//yacl/link",
-        "@yacl//yacl/utils:serialize",
         "@yacl//yacl/utils:parallel",
-        "@llvm-project//llvm:Support",
-        "@com_google_absl//absl/strings",
-        ":macro",
+        "@yacl//yacl/utils:serialize",
     ],
 )

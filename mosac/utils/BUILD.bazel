@@ -1,15 +1,31 @@
+# Copyright 2026 Ant International, Ant Group Co., Ltd.
+# 
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# 
+# Author (Xiaojian Liang)
+
 load("//bazel:mosac.bzl", "mosac_cc_library", "mosac_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
 mosac_cc_library(
     name = "uint256",
-    hdrs = ["uint256.h"],
     srcs = ["uint256.cc"],
+    hdrs = ["uint256.h"],
     deps = [
+        "@com_google_absl//absl/numeric:int128",
         "@yacl//yacl/base:exception",
         "@yacl//yacl/base:int128",
-        "@com_google_absl//absl/numeric:int128",
     ],
 )
 
@@ -26,8 +42,8 @@ mosac_cc_library(
     hdrs = ["field.h"],
     deps = [
         ":config",
-        "@yacl//yacl/crypto/utils:rand",
         "@boost//:multiprecision",
+        "@yacl//yacl/crypto/utils:rand",
     ],
 )
 
@@ -38,8 +54,8 @@ mosac_cc_library(
     deps = [
         ":field",
         "@yacl//yacl/crypto/tools:prg",
-        "@yacl//yacl/math/mpint",
         "@yacl//yacl/crypto/utils:rand",
+        "@yacl//yacl/math/mpint",
         "@yacl//yacl/utils:parallel",
     ],
 )

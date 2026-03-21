@@ -1,5 +1,21 @@
-load("//bazel:mosac.bzl", "mosac_cc_library", "mosac_cc_test")
+# Copyright 2026 Ant International, Ant Group Co., Ltd.
+# 
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# 
+# Author (Xiaojian Liang)
+
 load("@yacl//bazel:yacl.bzl", "AES_COPT_FLAGS")
+load("//bazel:mosac.bzl", "mosac_cc_library", "mosac_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -13,17 +29,17 @@ mosac_cc_library(
     ],
     copts = AES_COPT_FLAGS,
     deps = [
-        "@yacl//yacl/base:dynamic_bitset",
         "@yacl//yacl/base:aligned_vector",
-        "@yacl//yacl/crypto/primitives/ot:base_ot",
-        "@yacl//yacl/crypto/primitives/ot:kos_ote",
-        "@yacl//yacl/crypto/primitives/ot:gywz_ote",
-        "@yacl//yacl/crypto/primitives/ot:softspoken_ote",
-        "@yacl//yacl/crypto/primitives/ot:ot_store",
-        "@yacl//yacl/crypto/primitives/code:linear_code",
-        "@yacl//yacl/crypto/utils:rand",
-        "@yacl//yacl/crypto/tools:common",
+        "@yacl//yacl/base:dynamic_bitset",
         "@yacl//yacl/crypto/base/hash:hash_utils",
+        "@yacl//yacl/crypto/primitives/code:linear_code",
+        "@yacl//yacl/crypto/primitives/ot:base_ot",
+        "@yacl//yacl/crypto/primitives/ot:gywz_ote",
+        "@yacl//yacl/crypto/primitives/ot:kos_ote",
+        "@yacl//yacl/crypto/primitives/ot:ot_store",
+        "@yacl//yacl/crypto/primitives/ot:softspoken_ote",
+        "@yacl//yacl/crypto/tools:common",
+        "@yacl//yacl/crypto/utils:rand",
         "@yacl//yacl/math:gadget",
     ],
 )
@@ -37,13 +53,13 @@ mosac_cc_library(
         "ot_adapter.h",
     ],
     deps = [
-        "@yacl//yacl/base:dynamic_bitset",
+        ":ferret_ot",
         "@yacl//yacl/base:buffer",
+        "@yacl//yacl/base:dynamic_bitset",
+        "@yacl//yacl/crypto/base/hash:hash_utils",
         "@yacl//yacl/crypto/primitives/ot:base_ot",
         "@yacl//yacl/crypto/primitives/ot:ot_store",
         "@yacl//yacl/crypto/utils:rand",
-        "@yacl//yacl/crypto/base/hash:hash_utils",
-        ":ferret_ot",
     ],
 )
 
@@ -70,16 +86,16 @@ mosac_cc_library(
     deps = [
         ":ot_adapter",
         "//mosac/context:state",
-        "//mosac/ss:ss_type",
         "//mosac/cr:cr_param",
-        "@yacl//yacl/math:gadget",
+        "//mosac/ss:ss_type",
         "@yacl//yacl/base:dynamic_bitset",
+        "@yacl//yacl/crypto/base/aes:aes_intrinsics",
+        "@yacl//yacl/crypto/base/aes:aes_opt",
+        "@yacl//yacl/crypto/base/hash:hash_utils",
         "@yacl//yacl/crypto/primitives/ot:gywz_ote",
         "@yacl//yacl/crypto/primitives/ot:sgrr_ote",
         "@yacl//yacl/crypto/utils:rand",
-        "@yacl//yacl/crypto/base/aes:aes_opt",
-        "@yacl//yacl/crypto/base/aes:aes_intrinsics",
-        "@yacl//yacl/crypto/base/hash:hash_utils",
+        "@yacl//yacl/math:gadget",
     ],
 )
 
@@ -95,13 +111,13 @@ mosac_cc_library(
         ":ot_adapter",
         ":shuffle",
         "//mosac/context:state",
+        "//mosac/cr:cr_param",
         "//mosac/ss:ss_type",
         "//mosac/utils:field",
         "//mosac/utils:vec_op",
-        "//mosac/cr:cr_param",
         "@yacl//yacl/crypto/primitives/ot:gywz_ote",
-        "@yacl//yacl/math:gadget",
         "@yacl//yacl/crypto/tools:crhash",
+        "@yacl//yacl/math:gadget",
     ],
 )
 
@@ -135,7 +151,7 @@ mosac_cc_library(
         "@yacl//yacl/base:int128",
         "@yacl//yacl/crypto/tools:rp",
         "@yacl//yacl/utils:thread_pool",
-    ]  + select({
+    ] + select({
         "@platforms//cpu:aarch64": [
             "@com_github_dltcollab_sse2neon//:sse2neon",
         ],
@@ -153,7 +169,6 @@ mosac_cc_test(
     ],
 )
 
-
 mosac_cc_library(
     name = "ea_code",
     hdrs = ["ea_code.h"],
@@ -167,7 +182,7 @@ mosac_cc_library(
         "@yacl//yacl/base:int128",
         "@yacl//yacl/crypto/tools:rp",
         "@yacl//yacl/utils:thread_pool",
-    ]  + select({
+    ] + select({
         "@platforms//cpu:aarch64": [
             "@com_github_dltcollab_sse2neon//:sse2neon",
         ],
@@ -235,8 +250,8 @@ mosac_cc_test(
         "vole_test.cc",
     ],
     deps = [
-        ":vole",
         ":mpfss",
+        ":vole",
         "//mosac/context:register",
         "//mosac/cr",
         "//mosac/utils:test_util",
@@ -278,11 +293,11 @@ mosac_cc_library(
         "vole_adapter.h",
     ],
     deps = [
-        ":vole",
-        ":silent_vole",
         ":linear_code",
         ":ot_adapter",
         ":ot_helper",
+        ":silent_vole",
+        ":vole",
         "//mosac/context:state",
         "//mosac/ss:ss_type",
         "//mosac/utils:field",
@@ -298,10 +313,10 @@ mosac_cc_test(
         "vole_adapter_test.cc",
     ],
     deps = [
-        ":vole",
-        ":vole_adapter",
         ":ot_adapter",
         ":ot_helper",
+        ":vole",
+        ":vole_adapter",
         "//mosac/context:register",
         "//mosac/cr",
         "//mosac/utils:test_util",

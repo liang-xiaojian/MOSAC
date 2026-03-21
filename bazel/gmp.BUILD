@@ -1,3 +1,19 @@
+# Copyright 2026 Ant International, Ant Group Co., Ltd.
+# 
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# 
+# Author (Xiaojian Liang)
+
 _OPTS = [
     "-Werror",
     "-pedantic-errors",
@@ -14,8 +30,8 @@ cc_library(
     name = "gmp",
     srcs = ["libgmp.a"],
     hdrs = ["include/gmp.h"],
-    includes = ["include"],
     copts = _COPTS,
+    includes = ["include"],
     # Using an empty include_prefix causes Bazel to emit -I instead of -iquote
     # options for the include directory, so that #include <gmp.h> works.
     #include_prefix = "",
@@ -26,8 +42,8 @@ cc_library(
     name = "gmpxx",
     srcs = ["libgmpxx.a"],
     hdrs = ["include/gmpxx.h"],
-    includes = ["include"],
     copts = _CXXOPTS,
+    includes = ["include"],
     # Using an empty include_prefix causes Bazel to emit -I instead of -iquote
     # options for the include directory, so that #include <gmpxx.h> works.
     #include_prefix = "",
