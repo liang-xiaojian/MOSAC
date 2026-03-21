@@ -4,23 +4,6 @@ Malicious Shuffle Protocol
 
 The project depends on [YACL](https://github.com/secretflow/yacl), which provide several cryptographic interface (e.g. prg, ot, network).
 
-<!--
-Copyright 2026 Ant International, Ant Group Co., Ltd.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-  http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-Author (Xiaojian Liang)
--->
 
 ### File layout:
 + [context](mcpsi/context/): provide runtime environment
@@ -118,4 +101,4 @@ docker stop mosac-dev           # stop
 ```
 
 ### NOTICE
-Fake CR (FakeCorrelation) in `mosac/cr` is provided only for benchmarking and performance evaluation. It uses simulated randomness and MUST NOT be used in production or for security-sensitive deployments.
+This repository and all source code, examples, and utilities contained herein are provided solely for academic research and educational purposes. They are not intended for production use. Any benchmarking helpers (for example, FakeCorrelation in `mosac/cr`) are provided only for performance evaluation and MUST NOT be used in security-sensitive or production deployments.

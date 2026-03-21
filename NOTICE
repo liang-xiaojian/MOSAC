@@ -1,0 +1,14 @@
+NOTICE
+
+This repository and all code, examples, and utilities contained herein are
+provided solely for academic research and educational purposes. They are
+not intended for production use. Benchmarking helpers (for example,
+`mosac/cr/fake_cr.*`) are provided only for performance evaluation and
+must not be used in production or security-sensitive deployments.
+
+本仓库及其中的源码、示例和工具仅供学术研究和教学用途使用，
+不应用于生产环境。基准测试辅助（例如 `mosac/cr/fake_cr.*`）仅用于
+性能评估，不得用于生产或安全敏感场景。
+
+Copyright 2026 Ant International
+SPDX-License-Identifier: Apache-2.0
