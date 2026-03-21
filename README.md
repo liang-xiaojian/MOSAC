@@ -4,6 +4,16 @@ Malicious Shuffle Protocol
 
 The project depends on [YACL](https://github.com/secretflow/yacl), which provide several cryptographic interface (e.g. prg, ot, network).
 
+### Paper
+
+Title: Secret-Shared Shuffle from Authenticated Correlations
+
+Authors: Xiangfu Song, Xiaojian Liang, Ye Dong, Jianli Bai, Pu Duan, Changyu Dong, Tianwei Zhang, Ee-Chien Chang
+
+Affiliations: Nanyang Technological University; Ant International, Ant Group; National University of Singapore; Singapore Management University; Guangzhou University.
+
+Status: Accepted to [PKC 2026](https://pkc.iacr.org/2026/acceptedpapers.php)
+
 
 ### File layout:
 + [context](mcpsi/context/): provide runtime environment
@@ -99,3 +109,6 @@ docker start mosac-dev          # start
 docker exec -it mosac-dev bash  # launch the terminal
 docker stop mosac-dev           # stop
 ```
+
+### NOTICE
+This repository and all source code, examples, and utilities contained herein are provided solely for academic research and educational purposes. They are not intended for production use. Any benchmarking helpers (for example, FakeCorrelation in `mosac/cr`) are provided only for performance evaluation and MUST NOT be used in security-sensitive or production deployments.

@@ -1,3 +1,20 @@
+// Copyright 2026 Ant International, Ant Group Co., Ltd.
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//   http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// 
+// Author (Xiaojian Liang)
+
+
 #include <chrono>
 #include <future>
 #include <random>
@@ -40,7 +57,7 @@ llvm::cl::opt<uint32_t> cl_cache(
     llvm::cl::desc(
         "0 for no cache, 1 for cache (pre-compute offline randomness)"));
 
-auto NDSS_shuffle2k(const std::shared_ptr<yacl::link::Context> &lctx, size_t T,
+auto NDSS_shuffle2k(const std::shared_ptr<yacl::link::Context>& lctx, size_t T,
                     size_t num, bool CR_mode, bool cache) {
   auto rank = lctx->Rank();
 
@@ -80,14 +97,14 @@ struct ArgPack {
   uint32_t CR_mode;
   uint32_t cache;
 
-  bool operator==(const ArgPack &other) const {
+  bool operator==(const ArgPack& other) const {
     return (T == other.T) && (num == other.num) && (CR_mode == other.CR_mode) &&
            (cache == other.cache);
   }
-  bool operator!=(const ArgPack &other) const { return !(*this == other); }
+  bool operator!=(const ArgPack& other) const { return !(*this == other); }
 };
 
-bool SyncTask(const std::shared_ptr<yacl::link::Context> &lctx, uint32_t T,
+bool SyncTask(const std::shared_ptr<yacl::link::Context>& lctx, uint32_t T,
               uint32_t num, uint32_t CR_mode, uint32_t cache) {
   ArgPack tmp = {T, num, CR_mode, cache};
   auto bv = yacl::ByteContainerView(&tmp, sizeof(tmp));
@@ -110,7 +127,7 @@ bool SyncTask(const std::shared_ptr<yacl::link::Context> &lctx, uint32_t T,
   return true;
 }
 
-std::shared_ptr<yacl::link::Context> MakeLink(const std::string &parties,
+std::shared_ptr<yacl::link::Context> MakeLink(const std::string& parties,
                                               size_t rank) {
   yacl::link::ContextDesc lctx_desc;
   std::vector<std::string> hosts = absl::StrSplit(parties, ',');
@@ -124,7 +141,7 @@ std::shared_ptr<yacl::link::Context> MakeLink(const std::string &parties,
   return lctx;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   yacl::set_num_threads(1);  // force single thread per party
 
   // extract command line args
@@ -152,9 +169,9 @@ int main(int argc, char **argv) {
     typedef decltype(std::declval<internal::PTy>().GetVal()) INTEGER;
 
     auto shuffle_span = absl::MakeSpan(
-        reinterpret_cast<INTEGER *>(shuffle.data()), shuffle.size());
+        reinterpret_cast<INTEGER*>(shuffle.data()), shuffle.size());
     auto plaintext_span = absl::MakeSpan(
-        reinterpret_cast<INTEGER *>(plaintext.data()), plaintext.size());
+        reinterpret_cast<INTEGER*>(plaintext.data()), plaintext.size());
 
     std::sort(shuffle_span.begin(), shuffle_span.end());
     std::sort(plaintext_span.begin(), plaintext_span.end());

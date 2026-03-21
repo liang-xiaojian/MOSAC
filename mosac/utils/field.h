@@ -1,3 +1,20 @@
+// Copyright 2026 Ant International, Ant Group Co., Ltd.
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//   http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// 
+// Author (Xiaojian Liang)
+
+
 #pragma once
 
 // #include "gmp.h"
@@ -9,7 +26,7 @@ namespace mosac {
 
 namespace {
 
-uint64_t inline exgcd64(uint64_t a, uint64_t b, uint64_t &x, uint64_t &y) {
+uint64_t inline exgcd64(uint64_t a, uint64_t b, uint64_t& x, uint64_t& y) {
   uint64_t x1 = 1, x2 = 0, x3 = 0, x4 = 1;
   while (b != 0) {
     uint64_t c = a / b;
@@ -20,8 +37,8 @@ uint64_t inline exgcd64(uint64_t a, uint64_t b, uint64_t &x, uint64_t &y) {
   return a;
 }
 
-uint128_t inline exgcd128(uint128_t a, uint128_t b, uint128_t &x,
-                          uint128_t &y) {
+uint128_t inline exgcd128(uint128_t a, uint128_t b, uint128_t& x,
+                          uint128_t& y) {
   uint128_t x1 = 1, x2 = 0, x3 = 0, x4 = 1;
   while (b != static_cast<uint128_t>(0)) {
     uint128_t c = a / b;
@@ -67,35 +84,35 @@ class kFp64 {
     low == Prime64 ? val_ = 0 : val_ = low;
   }
 
-  kFp64 operator+(const kFp64 &rhs) const { return kFp64(val_ + rhs.val_); }
+  kFp64 operator+(const kFp64& rhs) const { return kFp64(val_ + rhs.val_); }
 
-  kFp64 operator-(const kFp64 &rhs) const {
+  kFp64 operator-(const kFp64& rhs) const {
     return kFp64(val_ - rhs.val_ + Prime64);
   }
 
-  kFp64 operator*(const kFp64 &rhs) const {
+  kFp64 operator*(const kFp64& rhs) const {
     uint128_t l = val_;
     uint128_t r = rhs.val_;
     return kFp64(l * r);
   }
 
-  kFp64 operator/(const kFp64 &rhs) const { return (*this) * Inv(rhs); }
+  kFp64 operator/(const kFp64& rhs) const { return (*this) * Inv(rhs); }
 
-  bool operator==(const kFp64 &rhs) const { return this->val_ == rhs.val_; }
+  bool operator==(const kFp64& rhs) const { return this->val_ == rhs.val_; }
 
-  bool operator!=(const kFp64 &rhs) const { return !(*this == rhs); }
+  bool operator!=(const kFp64& rhs) const { return !(*this == rhs); }
 
   uint64_t GetVal() const { return val_; }
 
-  static kFp64 Add(const kFp64 &lhs, const kFp64 &rhs) { return lhs + rhs; }
+  static kFp64 Add(const kFp64& lhs, const kFp64& rhs) { return lhs + rhs; }
 
-  static kFp64 Sub(const kFp64 &lhs, const kFp64 &rhs) { return lhs - rhs; }
+  static kFp64 Sub(const kFp64& lhs, const kFp64& rhs) { return lhs - rhs; }
 
-  static kFp64 Mul(const kFp64 &lhs, const kFp64 &rhs) { return lhs * rhs; }
+  static kFp64 Mul(const kFp64& lhs, const kFp64& rhs) { return lhs * rhs; }
 
-  static kFp64 Div(const kFp64 &lhs, const kFp64 &rhs) { return lhs / rhs; }
+  static kFp64 Div(const kFp64& lhs, const kFp64& rhs) { return lhs / rhs; }
 
-  static kFp64 Inv(const kFp64 &in) {
+  static kFp64 Inv(const kFp64& in) {
     // uint64_t result = gmp_invert(in.val_);
     uint64_t result = 0, _ = 0;
     uint64_t check = exgcd64(in.val_, Prime64, result, _);
@@ -103,9 +120,9 @@ class kFp64 {
     return kFp64(result + Prime64);
   }
 
-  static kFp64 Neg(const kFp64 &in) { return kFp64(Prime64 - in.val_); }
+  static kFp64 Neg(const kFp64& in) { return kFp64(Prime64 - in.val_); }
 
-  static bool Equal(const kFp64 &lhs, const kFp64 &rhs) { return lhs == rhs; }
+  static bool Equal(const kFp64& lhs, const kFp64& rhs) { return lhs == rhs; }
 
   static kFp64 Rand() {
     uint64_t rand_val = yacl::crypto::SecureRandU64();
@@ -143,41 +160,41 @@ class kFp128 {
     low == Prime128 ? val_ = 0 : val_ = low;
   }
 
-  kFp128 operator+(const kFp128 &rhs) const {
+  kFp128 operator+(const kFp128& rhs) const {
     // auto tmp = static_cast<uint256_t>(val_) +
     // static_cast<uint256_t>(rhs.val_);
     return kFp128(val_ + rhs.val_);
   }
 
-  kFp128 operator-(const kFp128 &rhs) const {
+  kFp128 operator-(const kFp128& rhs) const {
     // auto tmp = static_cast<uint256_t>(val_) + Prime128 -
     //            static_cast<uint256_t>(rhs.val_);
     return kFp128(val_ + Prime128 - rhs.val_);
   }
 
-  kFp128 operator*(const kFp128 &rhs) const {
+  kFp128 operator*(const kFp128& rhs) const {
     uint256_t l = static_cast<uint256_t>(val_);
     uint256_t r = static_cast<uint256_t>(rhs.val_);
     return kFp128(uint256_t(l * r));
   }
 
-  kFp128 operator/(const kFp128 &rhs) const { return (*this) * Inv(rhs); }
+  kFp128 operator/(const kFp128& rhs) const { return (*this) * Inv(rhs); }
 
-  bool operator==(const kFp128 &rhs) const { return this->val_ == rhs.val_; }
+  bool operator==(const kFp128& rhs) const { return this->val_ == rhs.val_; }
 
-  bool operator!=(const kFp128 &rhs) const { return !(*this == rhs); }
+  bool operator!=(const kFp128& rhs) const { return !(*this == rhs); }
 
   uint128_t GetVal() const { return val_; }
 
-  static kFp128 Add(const kFp128 &lhs, const kFp128 &rhs) { return lhs + rhs; }
+  static kFp128 Add(const kFp128& lhs, const kFp128& rhs) { return lhs + rhs; }
 
-  static kFp128 Sub(const kFp128 &lhs, const kFp128 &rhs) { return lhs - rhs; }
+  static kFp128 Sub(const kFp128& lhs, const kFp128& rhs) { return lhs - rhs; }
 
-  static kFp128 Mul(const kFp128 &lhs, const kFp128 &rhs) { return lhs * rhs; }
+  static kFp128 Mul(const kFp128& lhs, const kFp128& rhs) { return lhs * rhs; }
 
-  static kFp128 Div(const kFp128 &lhs, const kFp128 &rhs) { return lhs / rhs; }
+  static kFp128 Div(const kFp128& lhs, const kFp128& rhs) { return lhs / rhs; }
 
-  static kFp128 Inv(const kFp128 &in) {
+  static kFp128 Inv(const kFp128& in) {
     // uint64_t result = gmp_invert(in.val_);
     uint128_t result = 0, _ = 0;
     uint128_t check = exgcd128(in.val_, Prime128, result, _);
@@ -185,9 +202,9 @@ class kFp128 {
     return kFp128(result + Prime128);
   }
 
-  static kFp128 Neg(const kFp128 &in) { return kFp128(Prime128 - in.val_); }
+  static kFp128 Neg(const kFp128& in) { return kFp128(Prime128 - in.val_); }
 
-  static bool Equal(const kFp128 &lhs, const kFp128 &rhs) { return lhs == rhs; }
+  static bool Equal(const kFp128& lhs, const kFp128& rhs) { return lhs == rhs; }
 
   static kFp128 Rand() {
     uint128_t rand_val = yacl::crypto::SecureRandU128();

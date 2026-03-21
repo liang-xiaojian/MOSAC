@@ -1,0 +1,46 @@
+diff --git a/bazel/msgpack.BUILD b/bazel/msgpack.BUILD
+index 7d8ca68..92931bc 100644
+--- a/bazel/msgpack.BUILD
++++ b/bazel/msgpack.BUILD
+@@ -29,6 +29,7 @@ yacl_cmake_external(
+         "MSGPACK_BUILD_EXAMPLES": "OFF",
+         "BUILD_SHARED_LIBS": "OFF",
+         "MSGPACK_BUILD_TESTS": "OFF",
++        "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+     },
+     defines = ["MSGPACK_NO_BOOST"],
+     lib_source = ":all_srcs",
+diff --git a/yacl/crypto/base/ecc/openssl/openssl_group.cc b/yacl/crypto/base/ecc/openssl/openssl_group.cc
+index 0957b6a..ecbd497 100644
+--- a/yacl/crypto/base/ecc/openssl/openssl_group.cc
++++ b/yacl/crypto/base/ecc/openssl/openssl_group.cc
+@@ -52,11 +52,12 @@ UniqueBn Mp2Bn(const MPInt &mp) {
+ MPInt Bn2Mp(const BIGNUM *bn) {
+   CheckNotNull(bn);
+   auto buf_len = BN_num_bytes(bn);
+-  unsigned char buf[buf_len];
+-  YACL_ENFORCE(BN_bn2lebinpad(bn, buf, buf_len) >= 0);
++  std::vector<unsigned char> buf(buf_len);
++  // unsigned char buf[buf_len];
++  YACL_ENFORCE(BN_bn2lebinpad(bn, buf.data(), buf_len) >= 0);
+ 
+   MPInt mp;
+-  mp.FromMagBytes({buf, static_cast<size_t>(buf_len)}, Endian::little);
++  mp.FromMagBytes({buf.data(), static_cast<size_t>(buf_len)}, Endian::little);
+ 
+   if (BN_is_negative(bn)) {
+     mp.NegateInplace();
+@@ -359,10 +360,10 @@ size_t HashBn(const BIGNUM *bn) {
+     return 0;
+   }
+   int len = BN_num_bytes(bn);
+-  char buf[len];
+-  YACL_ENFORCE(BN_bn2lebinpad(bn, reinterpret_cast<unsigned char *>(buf), len) >
++  std::vector<char> buf(len);
++  YACL_ENFORCE(BN_bn2lebinpad(bn, reinterpret_cast<unsigned char *>(buf.data()), len) >
+                0);
+-  return std::hash<std::string_view>{}({buf, static_cast<size_t>(len)});
++  return std::hash<std::string_view>{}({buf.data(), static_cast<size_t>(len)});
+ }
+ }  // namespace
+ 
