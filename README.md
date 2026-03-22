@@ -110,5 +110,18 @@ docker exec -it mosac-dev bash  # launch the terminal
 docker stop mosac-dev           # stop
 ```
 
+### Citing MOSAC
+If you think MOSAC is helpful for your research or development, please consider citing our papers:
+```text
+@misc{cryptoeprint:2026/566,
+      author = {Xiangfu Song and Xiaojian Liang and Ye Dong and Jianli Bai and Pu Duan and Changyu Dong and Tianwei Zhang and Ee-Chien Chang},
+      title = {Secret-Shared Shuffle from Authenticated Correlations},
+      howpublished = {Cryptology {ePrint} Archive, Paper 2026/566},
+      year = {2026},
+      url = {https://eprint.iacr.org/2026/566}
+}
+```
+
+
 ### NOTICE
 This repository and all source code, examples, and utilities contained herein are provided solely for academic research and educational purposes. They are not intended for production use. Any benchmarking helpers (for example, FakeCorrelation in `mosac/cr`) are provided only for performance evaluation and MUST NOT be used in security-sensitive or production deployments.
