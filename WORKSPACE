@@ -76,6 +76,8 @@ http_archive(
     sha256 = LLVM_SHA256,
     strip_prefix = "llvm-project-" + LLVM_COMMIT,
     urls = LLVM_URLS,
+    patch_args = ["-p1"],
+    patches = ["//bazel:patches/llvm.patch"],
 )
 
 load("@llvm-bazel//:terminfo.bzl", "llvm_terminfo_disable")
